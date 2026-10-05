@@ -1,57 +1,72 @@
 # App Alimentos — Frescatto
 
-## Apontamento de Produção (`app_producao.py`)
+## Controle de Produção (`app_producao.py`)
 
-Aplicativo web para celular em que o operador lança os dados da produção
-direto no banco de dados, e a gestão acompanha produtividade e consumo.
+App web para celular em que o operador lança a produção (os dados da Plan1 da
+planilha CONTROLE PRODUÇÃO) direto num banco de dados, e a gestão acompanha os
+mesmos indicadores da planilha.
+
+**Para colocar no ar, siga o [GUIA_PUBLICACAO.md](GUIA_PUBLICACAO.md).**
 
 ```bash
 pip install -r requirements.txt
 streamlit run app_producao.py
 ```
 
-No celular, abra o endereço do app no navegador e use **"Adicionar à tela
-inicial"** para que ele funcione como um aplicativo.
+### Acessos (PIN)
+
+| PIN (secret) | Telas |
+|---|---|
+| `PIN_OPERADOR` | Lançar, Registros |
+| `PIN_CONSULTA` | Indicadores, Registros (somente leitura) |
+| `PIN_GESTOR` | Tudo, inclusive Cadastros e exclusão de lançamentos |
+
+Sem nenhum PIN configurado (uso local), o app entra direto como gestor.
+
+### O que o operador lança
+
+Operador, data, turno, linha, produto (PROD_DER), molde (vem do cadastro), OP,
+hora de início e término, produção (kg), passo inicial e final, parada e motivo.
+O passo inicial do lançamento seguinte já vem com o passo final do anterior.
+
+### Cálculos (iguais aos da Plan1)
+
+| Coluna da Plan1 | Fórmula |
+|---|---|
+| Passo total | passo fim − passo início |
+| Produção (un.) | produção kg ÷ peso líquido |
+| Produção (Bdj Total) | passo total × bandejas por passo do molde (2x1 = 2, 3x1 = 3, 2x2 = 4) |
+| Rendimento (máquina) | produção (un.) ÷ Bdj Total |
+| Tempo de produção total | hora término − hora início (passa da meia-noite) |
+| Produtividade (kg/h) | kg ÷ horas |
+| Tempo por kg (min) | minutos ÷ kg |
+| Consumo filme fundo / tampa | Bdj Total × filme por bandeja do molde (Planilha2) |
+| FT consumo fundo / tampa | consumo de filme ÷ kg |
+
+Produtos PDV (peso variável) ou sem molde ficam com essas colunas em branco,
+como na planilha. Os totais do período são ponderados: cada razão soma só os
+apontamentos que têm os dois dados.
+
+Peso e molde são copiados para cada lançamento, então alterar o cadastro não
+muda o histórico.
 
 ### Telas
 
-| Tela | Uso |
-|------|-----|
-| **Lançar** | Operador, data, turno, linha, produto, lote, horário de início/fim, pessoas na equipe, quantidade produzida, refugo, paradas (min + motivo), consumo de cada insumo e observações. Operador/linha/turno ficam memorizados entre lançamentos. |
-| **Registros** | Lista do período com indicadores por apontamento, exportação CSV (abre direto no Excel) e exclusão de lançamentos errados. |
-| **Indicadores** | Totais do período, produção diária, produtividade por linha/produto/operador, eficiência x meta, consumo específico e rendimento, paradas por motivo. |
-| **Cadastros** | Linhas, produtos (unidade e meta/hora), insumos (matéria-prima, embalagem, utilidades) e operadores. Itens são desativados, nunca apagados, para preservar o histórico. |
-
-### Indicadores calculados
-
-- **Horas efetivas** = (fim − início) − paradas
-- **Produtividade/h** = produzido ÷ horas efetivas
-- **Produtividade por homem·hora** = produzido ÷ (horas efetivas × pessoas)
-- **Refugo %** = refugo ÷ (produzido + refugo)
-- **Disponibilidade %** = horas efetivas ÷ horas totais
-- **Eficiência %** = produtividade/h ÷ meta/h do produto
-- **Consumo específico** = consumo do insumo ÷ produzido (ex.: kWh/kg, caixas/kg)
-- **Rendimento %** (matéria-prima) = produzido ÷ matéria-prima consumida
-
-Os totais do período são ponderados pelo tempo (não são médias simples).
+- **Lançar:** formulário com os cálculos da Plan1 mostrados antes de gravar.
+- **Registros:** tabela no layout da Plan1 e download em CSV (abre no Excel).
+- **Indicadores:** totais do período e tabelas por produto, linha, operador e
+  dia; rendimento por produto; produtividade por linha; paradas por motivo.
+- **Cadastros:** produtos (Planilha3), moldes (Planilha2), linhas e operadores.
 
 ### Banco de dados
 
-Tabelas: `linhas`, `produtos`, `insumos`, `operadores`, `apontamentos` e
-`consumos` (criadas automaticamente na primeira execução).
-
-- **Sem configuração:** SQLite local (`producao.db`) — bom para testes.
-- **Produção:** configure `DATABASE_URL` apontando para um PostgreSQL
-  (Supabase, Neon, Azure, AWS RDS ou servidor interno), via variável de
-  ambiente ou `.streamlit/secrets.toml` (veja `secrets.toml.example`). Os
-  dados ficam centralizados e podem ser lidos por Power BI/Excel.
-
-> No Streamlit Community Cloud o disco é apagado a cada reinício, então lá é
-> obrigatório usar um PostgreSQL externo.
-
-Para restringir o acesso, defina `APP_PIN` nos secrets.
+Tabelas: `linhas`, `operadores`, `moldes`, `produtos` e `apontamentos`, criadas
+na primeira execução e preenchidas com `producao/dados_iniciais.json` (extraído
+da planilha). Sem `DATABASE_URL`, usa SQLite local (`producao.db`), só para teste.
 
 ### Testes
+
+Os testes conferem os cálculos com os valores das linhas reais da Plan1.
 
 ```bash
 pip install pytest

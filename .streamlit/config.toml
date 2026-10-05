@@ -1,0 +1,9 @@
+[client]
+# Esconde o menu de desenvolvedor ("Deploy", "Rerun"...) para operadores
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#0b6e8a"

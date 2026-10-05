@@ -1,0 +1,1148 @@
+{
+ "linhas": [
+  "Skinpack",
+  "Alfresco"
+ ],
+ "operadores": [
+  "Luciano",
+  "Edson"
+ ],
+ "moldes": [
+  {
+   "nome": "Molde 2x1",
+   "cavidades": 2,
+   "fundo_un": 0.0280780333984722,
+   "tampa_un": 0.007024915093058008
+  },
+  {
+   "nome": "Molde 3x1",
+   "cavidades": 3,
+   "fundo_un": 0.0187186889323148,
+   "tampa_un": 0.003122184485803559
+  },
+  {
+   "nome": "Molde 2x2",
+   "cavidades": 4,
+   "fundo_un": 0.0140390166992361,
+   "tampa_un": 0.0027094803370786517
+  }
+ ],
+ "produtos": [
+  {
+   "codigo": "10385009338471-220",
+   "descricao": "F. BADEJO PEDACOS S/E 400GR SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 06",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x1"
+  },
+  {
+   "codigo": "14701020056241-964",
+   "descricao": "TEN POLVO S/CL 500GR SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 7,5",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.5,
+   "pdv": false,
+   "molde": "Molde 2x1"
+  },
+  {
+   "codigo": "16507014244261-220",
+   "descricao": "CAMARAO ROSA DESC EVISC 8/16 VAC PREM",
+   "desder": "FRESCATTO CXA 06",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.2,
+   "pdv": false,
+   "molde": "Molde 3x1"
+  },
+  {
+   "codigo": "16507014137261-220",
+   "descricao": "CAMARAO ROSA DESC EVISC 20/30 VAC PREMIUM",
+   "desder": "FRESCATTO CXA 06",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.2,
+   "pdv": false,
+   "molde": "Molde 3x1"
+  },
+  {
+   "codigo": "16502014326631-011",
+   "descricao": "CAMARAO CINZA DESC EVISC 25/35 250GR SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 05",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.25,
+   "pdv": false,
+   "molde": "Molde 3x1"
+  },
+  {
+   "codigo": "16507014034631-011",
+   "descricao": "CAMARAO ROSA DESC EVISC 5/10 250GR SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 05",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.25,
+   "pdv": false,
+   "molde": "Molde 3x1"
+  },
+  {
+   "codigo": "16507014327631-011",
+   "descricao": "CAMARAO ROSA DESC EVISC 12/20 250GR SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 05",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.25,
+   "pdv": false,
+   "molde": "Molde 3x1"
+  },
+  {
+   "codigo": "16516063001581-219",
+   "descricao": "CAUDA LAGOSTA CTD S/CL SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 03",
+   "setor": "EXPEDIÇÕES",
+   "peso": null,
+   "pdv": false,
+   "molde": "Molde 2x1"
+  },
+  {
+   "codigo": "16519022001621-219",
+   "descricao": "VIEIRA LIMPA S/CL 200GR SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 03",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.2,
+   "pdv": false,
+   "molde": "Molde 3x1"
+  },
+  {
+   "codigo": "16545014328631-011",
+   "descricao": "CAMARAO ARGENTINO DESC EVISC 12/18 250GR SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 05",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.25,
+   "pdv": false,
+   "molde": "Molde 3x1"
+  },
+  {
+   "codigo": "18001003001201-1033",
+   "descricao": "MEXILHAO LIMPO S/CL 300GR SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 5,4",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.3,
+   "pdv": false,
+   "molde": "Molde 3x1"
+  },
+  {
+   "codigo": "24616701063781-975",
+   "descricao": "F. SALMON PREM PEDACOS S/E 600GR SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 09",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.6,
+   "pdv": false,
+   "molde": "Molde 2x1"
+  },
+  {
+   "codigo": "24625054175781-964",
+   "descricao": "MEDALHAO SALMON S/CL 500GR SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 7,5",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.5,
+   "pdv": false,
+   "molde": "Molde 2x1"
+  },
+  {
+   "codigo": "24661054176781-1109",
+   "descricao": "MIX FRUTOS DO MAR S/CL 300GR SKIN PREMIUM",
+   "desder": "FRESCATTO CXA 4,5",
+   "setor": "EXPEDIÇÕES",
+   "peso": 0.3,
+   "pdv": false,
+   "molde": "Molde 2x1"
+  },
+  {
+   "codigo": "0604200200134F-1058",
+   "descricao": "LOMBO DOURADO S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "06042002001341-1058",
+   "descricao": "LOMBO DOURADO S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "06126030001341-1058",
+   "descricao": "LOMBO MECA PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "06126030001351-1058",
+   "descricao": "LOMBO MECA PEDACOS S/P S/E S/CL SKIN PREMIUM PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "06161010001341-1058",
+   "descricao": "LOMBO PREGO S/P S/E DEF S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "0622203000134F-1058",
+   "descricao": "LOMBO PIRARUCU PEDACOS S/P S/E S/CL SKIN BDJ",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "06222030001341-1058",
+   "descricao": "LOMBO PIRARUCU PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "06224030001341-1058",
+   "descricao": "LOMBO FILHOTE PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "06224030001371-1058",
+   "descricao": "LOMBO FILHOTE PEDACOS S/P S/E S/CL SKIN G BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "0634402500133F-1058",
+   "descricao": "LOMBO BACALHAU G.MORHUA DESSALG S/CL GOLD SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "06344025001331-1058",
+   "descricao": "LOMBO BACALHAU G.MORHUA DESS S/CL GOLD SKIN BDJPDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10035092300521-1058",
+   "descricao": "F. CONGRO ROSA PEDACOS S/P S/E 5 OZ SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10042092001521-1058",
+   "descricao": "F. DOURADO PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10045092001521-1058",
+   "descricao": "F. GAROUPA PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10049002001521-1058",
+   "descricao": "F. LINGUADO S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10096033246581-1075",
+   "descricao": "F. TRUTA DEF S/E 150GR SKIN PREMIUM",
+   "desder": "FRESC CXA 3,6 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.15,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "10125002001501-1058",
+   "descricao": "F. TILAPIA S/P S/E S/CL SKIN PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10125002001521-1058",
+   "descricao": "F. TILAPIA S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10126092001521-1058",
+   "descricao": "F. MECA PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10126092001571-1058",
+   "descricao": "F. MECA PEDACOS S/P S/E S/CL SKIN PREMIUM PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10126108001501-1058",
+   "descricao": "F. MECA PEDACOS BARRIGA S/P S/E S/CL SKIN PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10166001246521-1058",
+   "descricao": "F. ABADEJO S/P SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10224092001521-1058",
+   "descricao": "F. FILHOTE PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10238002001521-1058",
+   "descricao": "F. SEABASS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10238009001521-1058",
+   "descricao": "F. SEABASS S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10256093246551-1058",
+   "descricao": "F. SALMON PREM COHO PEDACOS S/E BDJ SKIN PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10256093283531-1061",
+   "descricao": "F. SALMON PREM COHO PEDACOS S/E 7 Oz SKIN BDJ",
+   "desder": "FRESC CXA 4 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.198,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "10263092001521-1058",
+   "descricao": "F. HALIBUT PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "1026900924652F-1058",
+   "descricao": "F. BLACK COD S/E SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10269009246521-1058",
+   "descricao": "F. BLACK COD S/E SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10269009246521-1059",
+   "descricao": "F. BLACK COD S/E SKIN BDJ PDV",
+   "desder": "FRESC CXA 8 PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10273009001501-1058",
+   "descricao": "F. SALMON SELVAGEM PEDACOS S/E S/CL SKIN PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10276002001501-1059",
+   "descricao": "F. PESCADA AMARELA PEDACOS S/P S/E S/CL SKIN PDV",
+   "desder": "FRESC CXA 8 PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10276002001521-1058",
+   "descricao": "F.PESCADA AMARELA PEDACOS S/P S/E S/CL SKIN BDJPDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10380002001521-1058",
+   "descricao": "F. CHERNE PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10388002001521-1058",
+   "descricao": "F. NAMORADO PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10388002001561-1058",
+   "descricao": "F. NAMORADO PEDACOS S/P S/E S/CL SKIN PREMIUM BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10395021001521-1058",
+   "descricao": "F. PIRARUCU PEDACOS S/E DEF S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "10433002001521-1058",
+   "descricao": "F. PESCADA CAMBUCU PEDACOS S/P S/E S/CL SKIN BDJPDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "16499053001611-1105",
+   "descricao": "AMEIJOA HOKKIGAI S/CL SKIN 200GR",
+   "desder": "FRESC CXA 2,4 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.2,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "16516078001601-1058",
+   "descricao": "CAUDA LAGOSTA PA EXP S/CL SKIN PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "16516582001591-1058",
+   "descricao": "CAUDA LAGOSTA PA EXP CTD S/CL SKIN PREMIUM PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "16516582001601-1058",
+   "descricao": "CAUDA LAGOSTA PA EXP CTD S/CL SKIN PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "16519022175581-1058",
+   "descricao": "VIEIRA LIMPA SKIN PREMIUM",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "16519077001601-1058",
+   "descricao": "VIEIRA MEIA CONCHA C/OVA S/CL SKIN PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "16519077001601-1069",
+   "descricao": "VIEIRA MEIA CONCHA C/OVA S/CL SKIN PDV",
+   "desder": "FRESC ISP CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "16536022263571-1058",
+   "descricao": "VIEIRA CANADENSE LIMPA 5/12 SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "23616206950491-1063",
+   "descricao": "F. SALMON PEDACOS ALFRESCO S/E SKIN 200GR",
+   "desder": "FRESC ISP CXA 4 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.2,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "24242234001961-1058",
+   "descricao": "F. DOURADO PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "24242234001961-1059",
+   "descricao": "F. DOURADO PEDACOS S/P S/E S/CL SKIN BDJ PDV",
+   "desder": "FRESC CXA 8 PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "24520550001691-1104",
+   "descricao": "CARNE CENTOLHA COZIDA S/CL SKIN 400GR",
+   "desder": "FRESC CXA 2 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "24616245167481-1123",
+   "descricao": "F. SALMON PREM PEDACOS SASHIMI S/P S/E S/CL SKIN 150GR",
+   "desder": "FRESCATTO CXA 3,6 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.15,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "24625020001951-1070",
+   "descricao": "MEDALHAO SALMON S/CL SKIN BDJ 500GR",
+   "desder": "FRESC CXA 7,5 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.5,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "24652230001981-1058",
+   "descricao": "F. SALMON PEDACOS S/E S/CL SKIN PREMIUM PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "24652701001621-1058",
+   "descricao": "F. SALMON PREM PEDACOS S/E S/CL SKIN PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "2465270100197F-1058",
+   "descricao": "F. SALMON PREM PEDACOS S/E S/CL SKIN G PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "24652701001971-1058",
+   "descricao": "F. SALMON PREM PEDACOS S/E S/CL SKIN G PDV",
+   "desder": "FRESC CXA PDV PF",
+   "setor": "PEIXARIA",
+   "peso": null,
+   "pdv": true,
+   "molde": null
+  },
+  {
+   "codigo": "2465270117478F-1061",
+   "descricao": "F.SALMON PREM PEDACOS S/E SKIN 200GR",
+   "desder": "FRESC CXA 4 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.2,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "24652701174781-1061",
+   "descricao": "F.SALMON PREM PEDACOS S/E SKIN 200GR",
+   "desder": "FRESC CXA 4 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.2,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "24655020001951-1070",
+   "descricao": "MEDALHAO ATUM S/CL SKIN BDJ 500GR",
+   "desder": "FRESC CXA 7,5 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.5,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "2466202005394F-1064",
+   "descricao": "HAMBURGUER ATUM SKIN BDJ 240GR",
+   "desder": "FRESC CXA 4,8 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.24,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "24662020053941-1064",
+   "descricao": "HAMBURGUER ATUM SKIN BDJ 240GR",
+   "desder": "FRESC CXA 4,8 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.24,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "24664020761801-1064",
+   "descricao": "HAMBURGUER SALMON 240GR SKIN",
+   "desder": "FRESC CXA 4,8 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.24,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "2467602005394F-1064",
+   "descricao": "HAMBURGUER DOURADO SKIN BDJ 240GR",
+   "desder": "FRESC CXA 4,8 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.24,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "24676020053941-1064",
+   "descricao": "HAMBURGUER DOURADO SKIN BDJ 240GR",
+   "desder": "FRESC CXA 4,8 PF",
+   "setor": "PEIXARIA",
+   "peso": 0.24,
+   "pdv": false,
+   "molde": null
+  },
+  {
+   "codigo": "05010027040181-1055",
+   "descricao": "LOMBO ATUM ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "05010027040181-970",
+   "descricao": "LOMBO ATUM ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "05125033001361-1129",
+   "descricao": "LOMBO TILAPIA ALFRESCO S/P S/E S/CL BDJ 290GR",
+   "desder": "FRESCATTO ISP CX3,48",
+   "setor": "ALFRESCO",
+   "peso": 0.29,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "05274027040181-805",
+   "descricao": "LOMBO ATUM NAC ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 7,2",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "05274027040181-970",
+   "descricao": "LOMBO ATUM NAC ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "05398027040201-1003",
+   "descricao": "LOMBO SALMON SASHIMI ALFRESCO S/P S/E S/CL BDJ 500GR",
+   "desder": "FRESCATTO ISP CXA 06",
+   "setor": "ALFRESCO",
+   "peso": 0.5,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "05398027040201-1056",
+   "descricao": "LOMBO SALMON SASHIMI ALFRESCO S/P S/E S/CL BDJ 500GR",
+   "desder": "FRESC ISP CXA 6 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.5,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "06382020001261-805",
+   "descricao": "LOMBO ATUM ALFRESCO S/CL BDJ 400G",
+   "desder": "FRESCATTO ISP CX 7,2",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "07090007001181-032",
+   "descricao": "SARDINHA ESPAL ALFRESCO S/CL BDJ 400GR",
+   "desder": "FRESCATTO CXA 04",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "07090007001181-1055",
+   "descricao": "SARDINHA ESPAL ALFRESCO S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "07090007001181-805",
+   "descricao": "SARDINHA ESPAL ALFRESCO S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 7,2",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "07090007001181-970",
+   "descricao": "SARDINHA ESPAL ALFRESCO S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09027070001181-1055",
+   "descricao": "F. CHERNE ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09042070001181-1055",
+   "descricao": "F. DOURADO ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09042070001181-805",
+   "descricao": "F. DOURADO ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 7,2",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09042070001181-970",
+   "descricao": "F. DOURADO ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09058070001181-1055",
+   "descricao": "F. NAMORADO ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09058070001181-805",
+   "descricao": "F. NAMORADO ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 7,2",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09058070001181-970",
+   "descricao": "F. NAMORADO ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09059070001181-970",
+   "descricao": "F. OLHETE ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09067064291181-597",
+   "descricao": "F. PESCADA ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO CXA 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09067064291181-966",
+   "descricao": "F. PESCADA ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO CXA 7,2",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09067064291181-970",
+   "descricao": "F. PESCADA ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09076064286181-1055",
+   "descricao": "F. PESCADINHA ALFRESCO S/E S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09076064286181-970",
+   "descricao": "F. PESCADINHA ALFRESCO S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09082064291181-1055",
+   "descricao": "F. ROBALO ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09125064001181-805",
+   "descricao": "F. TILAPIA ALFRESCO S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 7,2",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09125064001181-970",
+   "descricao": "F. TILAPIA ALFRESCO S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09125064291181-1055",
+   "descricao": "F. TILAPIA ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09125064291181-970",
+   "descricao": "F. TILAPIA ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09131070001181-1055",
+   "descricao": "F. TAMBORIL ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09131070001181-805",
+   "descricao": "F. TAMBORIL ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 7,2",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09131070001181-970",
+   "descricao": "F. TAMBORIL ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09398070001371-1130",
+   "descricao": "F. SALMON SASHIMI ALFRESCO S/P S/E S/CL BDJ 310GR",
+   "desder": "FRESCATTO ISP CX3,72",
+   "setor": "ALFRESCO",
+   "peso": 0.31,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "09442070001181-1055",
+   "descricao": "F. OLHETE HAMACHI ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "19615013001181-1055",
+   "descricao": "CUBO SALMON ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "19615013001181-970",
+   "descricao": "CUBO SALMON ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "19849026001181-805",
+   "descricao": "CUBO HALIBUT ALFRESCO S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 7,2",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "19911013001181-1055",
+   "descricao": "CUBO ATUM ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "19911013001181-970",
+   "descricao": "CUBO ATUM ALFRESCO S/P S/E S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "23616206001371-032",
+   "descricao": "F. SALMON PEDACOS ALFRESCO S/CL BDJ 400GR",
+   "desder": "FRESCATTO CXA 04",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "23616206001371-1055",
+   "descricao": "F. SALMON PEDACOS ALFRESCO S/CL BDJ 400GR",
+   "desder": "FRESC ISP CXA 4,8 PF",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "23616206001371-805",
+   "descricao": "F. SALMON PEDACOS ALFRESCO S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 7,2",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "23616206001371-970",
+   "descricao": "F. SALMON PEDACOS ALFRESCO S/CL BDJ 400GR",
+   "desder": "FRESCATTO ISP CX 4,8",
+   "setor": "ALFRESCO",
+   "peso": 0.4,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  },
+  {
+   "codigo": "23616206950491-1013",
+   "descricao": "F. SALMON PEDACOS ALFRESCO S/E SKIN 200GR",
+   "desder": "FRESCATTO ISP CXA 04",
+   "setor": "ALFRESCO",
+   "peso": 0.2,
+   "pdv": false,
+   "molde": "Molde 2x2"
+  }
+ ]
+}

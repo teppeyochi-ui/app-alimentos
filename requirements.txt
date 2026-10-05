@@ -1,4 +1,4 @@
-streamlit>=1.46
+streamlit>=1.50
 pandas
 openai
 sqlalchemy>=2.0

@@ -176,6 +176,27 @@ os registros (logs) aparecem na lateral. Mande um print (escondendo a senha).
 
 ---
 
+## Ver e validar os dados
+
+**No app** (PIN gestor ou consulta): aba **Registros**, com a tabela no layout da
+Plan1 e o botão **Baixar no formato da Plan1 (CSV)**. A aba **Indicadores** mostra
+os totais.
+
+**No Supabase** (direto no banco). Faça uma vez:
+1. No painel do projeto, menu lateral **SQL Editor** → **New query**.
+2. Cole todo o conteúdo do arquivo [`sql/plan1_view.sql`](sql/plan1_view.sql) e clique em **Run**.
+
+Isso cria a visão **`plan1`**, com as mesmas colunas e cálculos da Plan1, e liga
+a proteção das tabelas (RLS). Depois, para ver os dados:
+- **Table Editor** (menu lateral) → **plan1**; ou
+- **SQL Editor** → `select * from plan1 order by "Data" desc;`
+
+Para conferir só um dia: `select * from plan1 where "Data" = '2026-10-06';`
+
+As tabelas de origem (`apontamentos`, `produtos`, `moldes`, `linhas`,
+`operadores`) também aparecem no Table Editor. **Evite editar dados por lá**:
+corrija pelo app (Cadastros ou excluindo e relançando o apontamento).
+
 ## Dia a dia
 
 - **Trocar um PIN** (ex.: alguém saiu da equipe): share.streamlit.io → seu app →

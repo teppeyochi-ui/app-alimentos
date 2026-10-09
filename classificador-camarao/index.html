@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Classificador de Camarão</title>
+  <meta name="description" content="Classificação de lotes de camarão por pesagem unitária — Frescatto P&amp;D e Qualidade">
+  <meta name="theme-color" content="#0b4f8a">
+  <meta name="color-scheme" content="light dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Classificador">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icones/icone-192.png">
+  <link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="topo-titulo">
+      <strong>Classificador de Camarão</strong>
+      <span>Frescatto · P&amp;D e Qualidade</span>
+    </div>
+    <button type="button" id="btn-tema" class="btn-icone" aria-label="Alternar tema">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+      <span id="tema-rotulo">Auto</span>
+    </button>
+  </header>
+
+  <main id="principal">
+    <!-- ===================== 1. PRODUTO ===================== -->
+    <section id="tela-produto" class="tela" aria-labelledby="t-produto">
+      <h1 id="t-produto" class="titulo-tela">Produto</h1>
+
+      <div id="card-instalar" class="card card-instalar" hidden>
+        <h2>Instale o app no celular</h2>
+        <p>Funciona sem internet depois de instalado.</p>
+        <ul>
+          <li><b>Android (Chrome):</b> toque em <b>Instalar</b> ou no menu ⋮ → <b>Instalar app</b>.</li>
+          <li><b>iPhone (Safari):</b> toque em Compartilhar <span aria-hidden="true">⎙</span> → <b>Adicionar à Tela de Início</b>.</li>
+        </ul>
+        <div class="linha-botoes">
+          <button type="button" id="btn-instalar" class="btn btn-primario" hidden>Instalar</button>
+          <button type="button" id="btn-instalar-fechar" class="btn btn-secundario">Agora não</button>
+        </div>
+      </div>
+
+      <fieldset class="grupo">
+        <legend>Tipo de camarão</legend>
+        <div class="opcoes opcoes-3" data-grupo="especie">
+          <button type="button" data-valor="rosa"><b>Rosa</b><i>Farfantepenaeus spp.</i></button>
+          <button type="button" data-valor="cinza"><b>Cinza</b><i>Litopenaeus vannamei</i></button>
+          <button type="button" data-valor="argentino"><b>Argentino</b><i>Pleoticus muelleri</i></button>
+        </div>
+      </fieldset>
+
+      <fieldset class="grupo">
+        <legend>Apresentação</legend>
+        <div class="opcoes opcoes-2" data-grupo="apresentacao">
+          <button type="button" data-valor="inteiro">Inteiro</button>
+          <button type="button" data-valor="sem_cabeca">Sem cabeça</button>
+          <button type="button" data-valor="desc_cru">Descascado cru</button>
+          <button type="button" data-valor="desc_cozido">Descascado cozido</button>
+          <button type="button" data-valor="tailon_cru">Descascado tail on cru</button>
+          <button type="button" data-valor="tailon_cozido">Descascado tail on cozido</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="grupo">
+        <legend>Condição</legend>
+        <div class="opcoes opcoes-3" data-grupo="condicao">
+          <button type="button" data-valor="fresco">Fresco/ resfriado</button>
+          <button type="button" data-valor="congelado">Congelado</button>
+          <button type="button" data-valor="glaciado">Congelado glaciado</button>
+        </div>
+      </fieldset>
+
+      <div id="bloco-glaciado" class="grupo bloco-glaciado" hidden>
+        <div class="rotulo">Glaciamento</div>
+        <div class="stepper">
+          <button type="button" id="glac-menos" class="btn-step" aria-label="Diminuir glaciamento 0,5%">−</button>
+          <output id="glac-valor" aria-live="polite">10,0%</output>
+          <button type="button" id="glac-mais" class="btn-step" aria-label="Aumentar glaciamento 0,5%">+</button>
+        </div>
+        <div class="rotulo">Embalagem</div>
+        <div class="opcoes opcoes-2" data-grupo="embalagem">
+          <button type="button" data-valor="compensada">Compensada</button>
+          <button type="button" data-valor="nao_compensada">Não compensada</button>
+        </div>
+      </div>
+
+      <fieldset class="grupo">
+        <legend>Peso líquido declarado da embalagem</legend>
+        <div class="opcoes opcoes-4" id="atalhos-peso"></div>
+        <label class="campo campo-inline">
+          <span>Outro (g)</span>
+          <input id="peso-outro" type="text" inputmode="decimal" autocomplete="off" placeholder="ex.: 750">
+        </label>
+      </fieldset>
+
+      <fieldset class="grupo">
+        <legend>Identificação</legend>
+        <label class="campo"><span>Código do ensaio</span><input data-ident="codigo" type="text" autocomplete="off" placeholder="ex.: PD-2026-041"></label>
+        <label class="campo"><span>Data</span><input data-ident="data" type="date"></label>
+        <label class="campo"><span>Lote / NF</span><input data-ident="lote" type="text" autocomplete="off"></label>
+        <label class="campo"><span>Técnico</span><input data-ident="tecnico" type="text" autocomplete="name"></label>
+        <label class="campo"><span>Local / linha</span><input data-ident="local" type="text" autocomplete="off"></label>
+      </fieldset>
+
+      <section class="grupo" aria-labelledby="t-avisos">
+        <h2 id="t-avisos" class="rotulo">Avisos</h2>
+        <ul id="avisos" class="lista-status"></ul>
+      </section>
+
+      <button type="button" id="btn-iniciar" class="btn btn-primario btn-grande">Ir para a pesagem →</button>
+    </section>
+
+    <!-- ===================== 2. PESAGEM ===================== -->
+    <section id="tela-pesagem" class="tela" aria-labelledby="t-pesagem" hidden>
+      <h1 id="t-pesagem" class="visualmente-oculto">Pesagem</h1>
+      <div id="faixa-viva" class="faixa-viva" aria-live="polite"></div>
+
+      <div class="visor-bloco">
+        <div id="visor" class="visor" aria-live="polite" aria-label="Peso digitado"><span id="visor-num">0</span><small>g</small></div>
+        <p id="visor-erro" class="visor-erro" role="alert"></p>
+      </div>
+
+      <div class="teclado" role="group" aria-label="Teclado numérico">
+        <button type="button" data-tecla="7">7</button>
+        <button type="button" data-tecla="8">8</button>
+        <button type="button" data-tecla="9">9</button>
+        <button type="button" data-tecla="4">4</button>
+        <button type="button" data-tecla="5">5</button>
+        <button type="button" data-tecla="6">6</button>
+        <button type="button" data-tecla="1">1</button>
+        <button type="button" data-tecla="2">2</button>
+        <button type="button" data-tecla="3">3</button>
+        <button type="button" data-tecla=",">,</button>
+        <button type="button" data-tecla="0">0</button>
+        <button type="button" data-tecla="apagar" aria-label="Apagar">⌫</button>
+      </div>
+
+      <div class="acoes-pesagem">
+        <button type="button" id="btn-desfazer" class="btn btn-secundario">Desfazer último</button>
+        <button type="button" id="btn-adicionar" class="btn btn-primario btn-adicionar">Adicionar</button>
+      </div>
+
+      <div class="lista-cab">
+        <h2 class="rotulo">Unidades pesadas <span id="contador">0</span></h2>
+        <span class="dica">Toque duas vezes para remover</span>
+      </div>
+      <ol id="lista-unidades" class="lista-unidades" reversed></ol>
+    </section>
+
+    <!-- ===================== 3. RESULTADO ===================== -->
+    <section id="tela-resultado" class="tela" aria-labelledby="t-resultado" hidden>
+      <h1 id="t-resultado" class="titulo-tela">Resultado</h1>
+      <div id="resultado"></div>
+    </section>
+
+    <!-- ===================== 4. HISTÓRICO ===================== -->
+    <section id="tela-historico" class="tela" aria-labelledby="t-historico" hidden>
+      <h1 id="t-historico" class="titulo-tela">Histórico</h1>
+      <div id="historico"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <nav class="nav-inferior" aria-label="Navegação principal">
+    <button type="button" data-ir="produto">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9z"/><circle cx="8" cy="8" r="1.6"/></svg>
+      <span>Produto</span>
+    </button>
+    <button type="button" data-ir="pesagem">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16l-2-9H6z"/><path d="M12 11V5M8 5h8"/></svg>
+      <span>Pesagem</span><em id="nav-contador" hidden>0</em>
+    </button>
+    <button type="button" data-ir="resultado">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+      <span>Resultado</span>
+    </button>
+    <button type="button" data-ir="historico">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span>Histórico</span>
+    </button>
+  </nav>
+
+  <script src="core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

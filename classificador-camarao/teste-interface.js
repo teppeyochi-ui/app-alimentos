@@ -123,6 +123,7 @@ function verificar(cond, msg) {
     await tocar('#lista-unidades li[data-i="8"] button');
     verificar((await pag.locator('#lista-unidades li[data-i]').count()) === 8, 'Toque duplo remove a unidade');
     await digitarPeso('23');
+    await pag.evaluate(() => { document.getElementById('toast').hidden = true; });
     await pag.screenshot({ path: path.join(CAPTURAS, '2-pesagem.png'), fullPage: false });
     for (let i = 0; i < 2; i++) await tecla('apagar');
 

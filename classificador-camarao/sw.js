@@ -4,7 +4,7 @@
  * A cada atualização de qualquer arquivo (tabelas, telas, ícones), mude
  * VERSION: o cache antigo é apagado e o novo é baixado na próxima abertura.
  */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const CACHE = 'classificador-camarao-' + VERSION;
 
 const APP_SHELL = [
@@ -18,6 +18,7 @@ const APP_SHELL = [
   './icones/icone-512.png',
   './icones/icone-512-maskable.png',
   './icones/apple-touch-icon.png',
+  './icones/logo-frescatto.png',
 ];
 
 self.addEventListener('install', (ev) => {

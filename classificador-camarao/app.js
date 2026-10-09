@@ -729,7 +729,7 @@
     else raiz.setAttribute('data-theme', tema);
     $('#tema-rotulo').textContent = NOMES_TEMA[tema];
     var escuro = tema === 'dark' || (tema === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    $('meta[name="theme-color"]').setAttribute('content', escuro ? '#151b23' : '#0b4f8a');
+    $('meta[name="theme-color"]').setAttribute('content', escuro ? '#141c1f' : '#039fa3');
   }
 
   // ---------------------------------------------------------------------------

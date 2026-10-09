@@ -20,7 +20,7 @@ App de celular para técnicos de P&D e Qualidade classificarem lotes de camarão
 | `core.js` | **Tabelas e regras de classificação.** Único arquivo a editar para mudar tabelas. |
 | `sw.js` | Service worker: guarda o app no aparelho para uso offline. Tem a constante `VERSION`. |
 | `manifest.webmanifest` | Nome, cores e ícones do app instalado. |
-| `icones/` | Ícones 192, 512, 512 maskable (Android) e apple-touch-icon (iPhone). |
+| `icones/` | Ícones 192, 512, 512 maskable (Android), apple-touch-icon (iPhone) e `logo-frescatto.png` (topo do app). |
 | `teste-motor.js` | Testes das regras e tabelas: `node teste-motor.js`. |
 | `teste-interface.js` | Teste de interface com Playwright: `node teste-interface.js`. |
 | `Teste_Classificador.xlsx` | Relatório dos testes e achados das tabelas (vãos e sobreposições). |
@@ -43,14 +43,24 @@ O modo offline e a instalação **só funcionam em HTTPS**. Abrir o `index.html`
 4. Em segundos sai um endereço como `https://nome-aleatorio.netlify.app`. Em *Site configuration → Change site name* dá para trocar por algo como `classificador-frescatto`.
 5. Para atualizar, abra o site no painel, vá em **Deploys** e arraste a pasta nova.
 
-### Opção B — GitHub Pages (versionado, junto com o código)
+### Opção B — GitHub Pages (recomendada: versionada e automática)
 
-1. No repositório do GitHub, vá em **Settings → Pages**.
-2. Em *Build and deployment*, escolha **Deploy from a branch**, a branch (por exemplo `main`) e a pasta `/ (root)`. Depois clique em **Save**.
-3. O endereço será `https://<usuario-ou-org>.github.io/<repositorio>/classificador-camarao/`.
-4. Cada `git push` na branch publica de novo em 1 a 2 minutos.
+O repositório já tem o workflow `.github/workflows/pages-classificador.yml`. Ele roda os testes do motor e publica **só os arquivos do app** em:
 
-> O GitHub Pages é público, mesmo com repositório privado em planos pagos (exceto no GitHub Enterprise com Pages privado). O app não tem dados sigilosos: as avaliações ficam só no celular de cada técnico. Mesmo assim, confirme com a TI se o endereço pode ficar público.
+**https://teppeyochi-ui.github.io/app-alimentos/**
+
+Configuração, feita uma única vez:
+
+1. Leve o código para a branch `main` (merge do pull request).
+2. No GitHub, abra o repositório e vá em **Settings → Pages**.
+3. Em *Build and deployment → Source*, escolha **GitHub Actions**. Não é *Deploy from a branch*.
+4. Vá em **Actions → Publicar Classificador de Camarão → Run workflow** para a primeira publicação. Depois, cada `push` na `main` que altere `classificador-camarao/` publica sozinho em 1 a 2 minutos.
+5. Se o workflow falhar no passo **Testes do motor**, o site não é atualizado. A versão anterior continua no ar.
+
+Cuidados:
+
+- O repositório e o site são **públicos**. Qualquer pessoa com o endereço abre o app e vê as tabelas em `core.js`. As avaliações não vão para o site: ficam só no celular de cada técnico. Se as tabelas não puderem ser públicas, use a Opção C ou torne o repositório privado. Com repositório privado, o Pages só funciona em planos pagos e o site continua público, a menos que a conta seja GitHub Enterprise.
+- Lembre de mudar a `VERSION` em `sw.js` a cada publicação (seção 4.2).
 
 ### Opção C — Servidor interno da Frescatto
 
@@ -145,7 +155,14 @@ Se a `VERSION` não mudar, os celulares continuam usando a versão antiga mesmo 
 
 Se você criar um arquivo novo que o app precise (por exemplo, outro ícone), inclua o caminho na lista `APP_SHELL` em `sw.js`.
 
-### 4.3 Testes antes de publicar
+### 4.3 Logo e cores da marca
+
+- **Logo do topo:** `icones/logo-frescatto.png`. Hoje é um recorte do site, com 103×58 px. Para trocar pelo arquivo oficial, salve-o com o mesmo nome. De preferência use um PNG com cerca de 300 px de largura ou mais, para ficar nítido em telas retina.
+- **Cores:** ficam no topo de `styles.css`, como variáveis. `--marca-teal` (#039FA3) é a faixa do topo e `--marca-vinho` (#AB0433) é o título e o indicador da navegação. `--prim` (#00777B) é um teal mais escuro, usado em botões e seleção porque mantém o contraste do texto branco acima de 4,5:1. Os valores do tema escuro estão logo abaixo.
+- **Ícones do app:** o desenho está em `ferramentas/icone.svg`. Depois de editar, rode `node ferramentas/gerar-icones.js`.
+- Mude a `VERSION` em `sw.js` depois de qualquer troca.
+
+### 4.4 Testes antes de publicar
 
 ```bash
 node teste-motor.js        # regras e tabelas: deve terminar em "0 falhas"

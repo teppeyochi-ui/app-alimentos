@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect id="fundo" width="512" height="512" rx="112" fill="#0b4f8a"/>
+  <rect id="fundo" width="512" height="512" rx="112" fill="#039fa3"/>
   <g transform="translate(256 286)">
     <!-- Corpo em C (camarão curvado), com segmentos -->
     <path d="M -93.5 -78.4 A 122 122 0 1 0 93.5 -78.4" fill="none" stroke="#ffffff" stroke-width="76"/>
     <circle cx="-93.5" cy="-78.4" r="38" fill="#ffffff"/>
-    <g stroke="#0b4f8a" stroke-width="9" stroke-linecap="round"><line x1="90" y1="0" x2="154" y2="0" transform="rotate(200)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(170)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(140)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(110)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(80)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(50)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(20)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(-10)"/></g>
+    <g stroke="#039fa3" stroke-width="9" stroke-linecap="round"><line x1="90" y1="0" x2="154" y2="0" transform="rotate(200)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(170)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(140)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(110)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(80)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(50)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(20)"/><line x1="90" y1="0" x2="154" y2="0" transform="rotate(-10)"/></g>
     <!-- Cauda em leque -->
     <path d="M 124 -104 L 92 -178 L 64 -140 L 26 -160 L 36 -124 L -6 -112 L 63 -52 Z" fill="#ffffff" stroke="#ffffff" stroke-width="12" stroke-linejoin="round"/>
     <!-- Olho e antenas -->
-    <circle cx="-104" cy="-84" r="11" fill="#0b4f8a"/>
-    <path d="M -112 -114 C -130 -180 -60 -215 10 -196 M -90 -112 C -80 -170 -10 -180 46 -158" fill="none" stroke="#ffb547" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="-104" cy="-84" r="11" fill="#039fa3"/>
+    <path d="M -112 -114 C -130 -180 -60 -215 10 -196 M -90 -112 C -80 -170 -10 -180 46 -158" fill="none" stroke="#ab0433" stroke-width="10" stroke-linecap="round"/>
   </g>
 </svg>

@@ -1,0 +1,57 @@
+# Publica o Classificador de Camarão no GitHub Pages.
+# Endereço: https://teppeyochi-ui.github.io/app-alimentos/
+# Configuração única: Settings → Pages → Build and deployment → Source: "GitHub Actions".
+name: Publicar Classificador de Camarão
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'classificador-camarao/**'
+      - '.github/workflows/pages-classificador.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Não publica se as regras ou tabelas quebrarem os testes do motor.
+      - name: Testes do motor
+        working-directory: classificador-camarao
+        run: node teste-motor.js
+
+      # Só os arquivos do app vão para o site (testes, planilha e capturas ficam fora).
+      - name: Montar o site
+        run: |
+          mkdir -p _site
+          cd classificador-camarao
+          cp index.html styles.css app.js core.js sw.js manifest.webmanifest ../_site/
+          cp -r icones ../_site/
+          touch ../_site/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

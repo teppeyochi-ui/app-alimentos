@@ -47,7 +47,10 @@ jobs:
           cp -r icones ../_site/
           touch ../_site/.nojekyll
 
+      # Tenta ligar o Pages (fonte "GitHub Actions") se ainda não estiver ligado.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -1,0 +1,19 @@
+{
+  "name": "Classificador de Camarão — Frescatto P&D",
+  "short_name": "Classificador",
+  "description": "Classificação de lotes de camarão por pesagem unitária, com faixa de peso e de peças por embalagem.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#039fa3",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    { "src": "icones/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icones/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icones/icone-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

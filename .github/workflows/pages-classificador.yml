@@ -1,13 +1,15 @@
-# Publica o Classificador de Camarão no GitHub Pages.
-# Endereço: https://teppeyochi-ui.github.io/app-alimentos/
+# Publica os apps no GitHub Pages.
+# Classificador de Camarão: https://teppeyochi-ui.github.io/app-alimentos/
+# Dita (ditado por voz):    https://teppeyochi-ui.github.io/app-alimentos/ditado-voz/
 # Configuração única: Settings → Pages → Build and deployment → Source: "GitHub Actions".
-name: Publicar Classificador de Camarão
+name: Publicar apps no GitHub Pages
 
 on:
   push:
     branches: [main]
     paths:
       - 'classificador-camarao/**'
+      - 'ditado-voz/**'
       - '.github/workflows/pages-classificador.yml'
   workflow_dispatch:
 
@@ -38,6 +40,10 @@ jobs:
         working-directory: classificador-camarao
         run: node teste-motor.js
 
+      - name: Testes do núcleo do Dita
+        working-directory: ditado-voz
+        run: node teste-nucleo.js
+
       # Só os arquivos do app vão para o site (testes, planilha e capturas ficam fora).
       - name: Montar o site
         run: |
@@ -45,6 +51,10 @@ jobs:
           cd classificador-camarao
           cp index.html styles.css app.js core.js sw.js manifest.webmanifest ../_site/
           cp -r icones ../_site/
+          mkdir -p ../_site/ditado-voz
+          cd ../ditado-voz
+          cp index.html styles.css app.js core.js sw.js manifest.webmanifest ../_site/ditado-voz/
+          cp -r icones ../_site/ditado-voz/
           touch ../_site/.nojekyll
 
       # Tenta ligar o Pages (fonte "GitHub Actions") se ainda não estiver ligado.

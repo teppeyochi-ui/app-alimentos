@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Dita — ditado por voz</title>
+  <meta name="description" content="Fale à vontade: o Dita transcreve e entrega o texto limpo, pontuado e formatado.">
+  <meta name="theme-color" content="#039fa3">
+  <meta name="color-scheme" content="light dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Dita">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icones/icone-192.png">
+  <link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="marca">
+      <img src="icones/icone-192.png" alt="" width="36" height="36">
+      <div>
+        <strong>Dita</strong>
+        <span>fale, o texto sai pronto</span>
+      </div>
+    </div>
+    <div class="topo-acoes">
+      <button type="button" id="btn-historico" class="btn-icone" aria-label="Histórico">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>
+      </button>
+      <button type="button" id="btn-ajustes" class="btn-icone" aria-label="Ajustes">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <p id="aviso" class="aviso" hidden></p>
+
+    <div class="estilos" id="estilos" role="radiogroup" aria-label="Estilo do texto"></div>
+
+    <section class="folha">
+      <textarea id="texto" spellcheck="true" aria-label="Texto"
+        placeholder="Toque no microfone e fale. Pode hesitar, repetir e se corrigir: o texto sai limpo.&#10;&#10;Também dá para colar ou digitar aqui e tocar em Polir."></textarea>
+      <p id="ao-vivo" class="ao-vivo" aria-live="polite" hidden></p>
+      <div class="folha-rodape">
+        <span id="contagem">0 palavras</span>
+        <span id="selo" class="selo" hidden></span>
+      </div>
+    </section>
+
+    <details id="original" class="original" hidden>
+      <summary>Transcrição original</summary>
+      <p id="original-texto"></p>
+    </details>
+
+    <div class="acoes">
+      <button type="button" id="btn-copiar" class="btn prim">Copiar</button>
+      <button type="button" id="btn-compartilhar" class="btn" hidden>Compartilhar</button>
+      <button type="button" id="btn-ajustar" class="btn" title="Fale o que mudar: “deixa mais curto”, “traduz para inglês”…">Ajustar por voz</button>
+      <button type="button" id="btn-polir" class="btn" title="Limpa o texto que está na tela">Polir</button>
+      <button type="button" id="btn-desfazer" class="btn" hidden>Desfazer</button>
+      <button type="button" id="btn-novo" class="btn sutil">Novo</button>
+    </div>
+  </main>
+
+  <footer class="base">
+    <p id="estado" class="estado" aria-live="polite">Toque para falar</p>
+    <button type="button" id="btn-mic" class="mic" aria-label="Começar a ditar" aria-pressed="false">
+      <svg class="ic-mic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+      <svg class="ic-parar" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+      <span class="girando" aria-hidden="true"></span>
+    </button>
+    <p class="dica">Atalho: <kbd>Espaço</kbd> grava e para · <kbd>Esc</kbd> cancela</p>
+  </footer>
+
+  <dialog id="dlg-ajustes" class="dlg">
+    <form method="dialog">
+      <h2>Ajustes</h2>
+
+      <label for="cfg-chave">Chave da API da Anthropic</label>
+      <input id="cfg-chave" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
+      <p class="ajuda">Necessária para a limpeza com IA. Fica guardada só neste aparelho e é enviada apenas à Anthropic. Crie uma em console.anthropic.com. Sem chave, o Dita faz só uma limpeza simples.</p>
+
+      <label for="cfg-modelo">Modelo</label>
+      <select id="cfg-modelo"></select>
+
+      <label for="cfg-idioma">Idioma da fala</label>
+      <select id="cfg-idioma"></select>
+
+      <label for="cfg-dicionario">Dicionário pessoal</label>
+      <textarea id="cfg-dicionario" rows="3" placeholder="Nomes e termos que você usa, separados por vírgula. Ex.: Frescatto, SIF, glaciamento"></textarea>
+
+      <label class="marcar"><input id="cfg-copiar" type="checkbox"> Copiar o texto automaticamente ao terminar</label>
+
+      <div class="dlg-acoes">
+        <button type="button" id="cfg-cancelar" class="btn">Cancelar</button>
+        <button type="submit" id="cfg-salvar" class="btn prim">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-historico" class="dlg">
+    <h2>Histórico</h2>
+    <p class="ajuda">Os ditados ficam guardados só neste aparelho.</p>
+    <ul id="lista-historico" class="historico"></ul>
+    <div class="dlg-acoes">
+      <button type="button" id="hist-apagar" class="btn sutil">Apagar tudo</button>
+      <button type="button" id="hist-fechar" class="btn prim">Fechar</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

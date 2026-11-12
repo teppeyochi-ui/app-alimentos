@@ -1,13 +1,22 @@
-# Publica o Classificador de Camarão no GitHub Pages.
-# Endereço: https://teppeyochi-ui.github.io/app-alimentos/
+# Publica os aplicativos no GitHub Pages.
+#   https://teppeyochi-ui.github.io/app-alimentos/              → Classificador de Camarão
+#   https://teppeyochi-ui.github.io/app-alimentos/diario-skin/  → Diário da Linha Skin
 # Configuração única: Settings → Pages → Build and deployment → Source: "GitHub Actions".
-name: Publicar Classificador de Camarão
+#
+# Diário da Linha Skin: sem configuração, é publicado em MODO LOCAL (os dados
+# ficam só em cada aparelho, sem login). Para ligar ao Supabase, crie duas
+# variáveis em Settings → Secrets and variables → Actions → Variables:
+#   VITE_SUPABASE_URL       endereço do projeto (https://xxxx.supabase.co)
+#   VITE_SUPABASE_ANON_KEY  chave pública ("anon" ou "publishable"), nunca a service_role
+# e rode este workflow de novo (aba Actions → Run workflow).
+name: Publicar aplicativos no GitHub Pages
 
 on:
   push:
     branches: [main]
     paths:
       - 'classificador-camarao/**'
+      - 'diario-skin/**'
       - '.github/workflows/pages-classificador.yml'
   workflow_dispatch:
 
@@ -32,20 +41,40 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: diario-skin/package-lock.json
 
       # Não publica se as regras ou tabelas quebrarem os testes do motor.
-      - name: Testes do motor
+      - name: Classificador — testes do motor
         working-directory: classificador-camarao
         run: node teste-motor.js
 
-      # Só os arquivos do app vão para o site (testes, planilha e capturas ficam fora).
+      - name: Diário — dependências
+        working-directory: diario-skin
+        run: npm ci
+
+      # Cálculos, carga inicial, sincronização e exportação.
+      - name: Diário — testes de unidade
+        working-directory: diario-skin
+        run: npm test
+
+      - name: Diário — build
+        working-directory: diario-skin
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      # Só os arquivos dos aplicativos vão para o site (testes, planilhas e capturas ficam fora).
       - name: Montar o site
         run: |
           mkdir -p _site
           cd classificador-camarao
           cp index.html styles.css app.js core.js sw.js manifest.webmanifest ../_site/
           cp -r icones ../_site/
-          touch ../_site/.nojekyll
+          cd ..
+          cp -r diario-skin/dist _site/diario-skin
+          touch _site/.nojekyll
 
       # Tenta ligar o Pages (fonte "GitHub Actions") se ainda não estiver ligado.
       - uses: actions/configure-pages@v5

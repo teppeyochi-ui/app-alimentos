@@ -33,6 +33,27 @@ npm run dev
 
 Abra o endereço que aparecer no terminal. Precisa do Node.js 20 ou mais novo.
 
+## Publicado no GitHub Pages
+
+O workflow `.github/workflows/pages-classificador.yml` publica o Diário junto com o Classificador de Camarão, a cada mudança no `main`:
+
+- Classificador: `https://teppeyochi-ui.github.io/app-alimentos/`
+- Diário da Linha Skin: `https://teppeyochi-ui.github.io/app-alimentos/diario-skin/`
+
+Sem configuração, o Diário é publicado em **modo local**. Para o celular: abra o endereço, instale (ver [passo 7](#7-instalar-no-celular)) e use.
+
+### Como os dados ficam gravados no modo local
+
+- **Gravação automática no próprio aparelho**, a cada alteração: OPs, contagens, paradas e fotos. Não precisa de internet nem de botão; o rodapé mostra "Salvo no aparelho".
+- **Ficam só naquele aparelho e naquele navegador.** O que um operador lança não aparece no celular de outro nem no computador do P&D.
+- **Para tirar os dados:** no próprio aparelho, *Painel P&D → Exportar XLSX* (ou CSV). As fotos não vão na exportação; ficam visíveis no detalhe da OP, naquele aparelho.
+- **Podem se perder** se alguém limpar os dados do navegador ou desinstalar o aplicativo. No iPhone, instale na Tela de Início: o Safari pode apagar dados de sites não instalados que ficam semanas sem uso.
+- **Quando o Supabase for ligado** neste mesmo endereço, o aplicativo avisa que há versão nova, pede login e envia sozinho as OPs e fotos que estavam no aparelho. Elas ficam registradas em nome de quem fizer esse primeiro login.
+
+### Ligar o Pages ao Supabase
+
+Depois dos passos 1 a 4 abaixo, crie duas variáveis no GitHub, em *Settings → Secrets and variables → Actions → Variables*: `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (a chave pública, nunca a *service_role*). Depois rode o workflow de novo (aba *Actions → Run workflow*) e informe o endereço do Diário no Supabase ([passo 3](#3-configurar-o-login)).
+
 ## Colocar no ar, passo a passo
 
 Os nomes dos menus do Supabase mudam de vez em quando; se algum não bater, procure pelo nome mais parecido.
@@ -88,7 +109,7 @@ Daí em diante, as próximas contas são liberadas dentro do aplicativo, em **Ad
 | Pasta de saída | `dist` |
 | Variáveis de ambiente | `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` |
 
-Funciona em Vercel, Netlify e Cloudflare Pages ligando o repositório do GitHub. Depois de publicar, volte ao passo 3 e informe o endereço do site no Supabase.
+Funciona em Vercel, Netlify e Cloudflare Pages ligando o repositório do GitHub. No GitHub Pages já está configurado: basta criar as duas variáveis, como descrito em [Ligar o Pages ao Supabase](#ligar-o-pages-ao-supabase). Depois de publicar, volte ao passo 3 e informe o endereço do site no Supabase.
 
 Com as duas variáveis preenchidas, o catálogo e o histórico **não** vão dentro do aplicativo publicado: só chegam do banco, depois do login.
 

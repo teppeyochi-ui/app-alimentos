@@ -1,0 +1,45 @@
+{
+  "name": "diario-skin",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Diário da Linha Skin — registro de OPs da termoformadora ULMA (Frescatto P&D)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tipos": "tsc --noEmit",
+    "sql": "node ferramentas/gerar-sql.mjs",
+    "icones": "node ferramentas/gerar-icones.cjs",
+    "test": "vitest run",
+    "test:banco": "bash testes/sql/rodar.sh",
+    "test:navegador": "node testes/e2e/fluxo-local.cjs",
+    "test:integrado": "node testes/e2e/fluxo-servidor.cjs",
+    "test:tudo": "npm run test && npm run test:banco && npm run build && npm run test:navegador && npm run test:integrado"
+  },
+  "dependencies": {
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@supabase/supabase-js": "^2.119.0",
+    "fflate": "^0.8.3",
+    "idb": "^8.0.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "fake-indexeddb": "^6.2.8",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.1.0",
+    "workbox-build": "^7.4.1",
+    "workbox-window": "^7.4.1",
+    "zod": "^4.6.7"
+  }
+}

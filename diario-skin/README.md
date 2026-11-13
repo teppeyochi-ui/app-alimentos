@@ -42,7 +42,7 @@ O workflow `.github/workflows/pages-classificador.yml` publica o Diário junto c
 - Classificador: `https://teppeyochi-ui.github.io/app-alimentos/`
 - Diário da Linha Skin: `https://teppeyochi-ui.github.io/app-alimentos/diario-skin/`
 
-Sem configuração, o Diário é publicado em **modo local**. Para o celular: abra o endereço, instale (ver [passo 7](#7-instalar-no-celular)) e use.
+O Diário publicado está **ligado ao Supabase**: o endereço do projeto e a chave pública ficam no próprio workflow (são valores públicos). Para o celular: abra o endereço, entre com sua conta, instale (ver [passo 7](#7-instalar-no-celular)) e use.
 
 ### Como os dados ficam gravados no modo local
 
@@ -54,7 +54,7 @@ Sem configuração, o Diário é publicado em **modo local**. Para o celular: ab
 
 ### Ligar o Pages ao Supabase
 
-Depois dos passos 1 a 4 abaixo, crie duas variáveis no GitHub, em *Settings → Secrets and variables → Actions → Variables*: `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (a chave pública, nunca a *service_role*). Depois rode o workflow de novo (aba *Actions → Run workflow*) e informe o endereço do Diário no Supabase ([passo 3](#3-configurar-o-login)).
+O workflow já traz o endereço e a chave pública do projeto. Para apontar para outro projeto, crie duas variáveis no GitHub, em *Settings → Secrets and variables → Actions → Variables*: `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (a chave pública, nunca a *service_role*); elas têm prioridade sobre o que está no workflow. Depois rode o workflow de novo (aba *Actions → Run workflow*) e informe o endereço do Diário no Supabase ([passo 3](#3-configurar-o-login)).
 
 ## Colocar no ar, passo a passo
 

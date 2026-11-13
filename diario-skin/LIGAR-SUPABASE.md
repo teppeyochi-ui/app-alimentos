@@ -65,6 +65,8 @@ Rode esse arquivo **uma vez só**, num projeto novo. Ele cria as tabelas, as per
 
 ## Etapa 4: colar as duas informações no GitHub
 
+> **Já feito para o projeto atual:** o endereço e a chave pública estão gravados no arquivo de publicação, então as etapas 4 e 5 só são necessárias se você trocar de projeto no Supabase.
+
 1. Abra a [página de variáveis do repositório](https://github.com/teppeyochi-ui/app-alimentos/settings/variables/actions), logado no GitHub. O caminho pelos menus é **Settings → Secrets and variables → Actions**, aba **Variables** (não é a aba "Secrets").
 2. Clique em **New repository variable** e crie a primeira:
    - **Name:** `VITE_SUPABASE_URL`

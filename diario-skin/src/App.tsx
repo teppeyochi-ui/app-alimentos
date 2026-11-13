@@ -14,17 +14,20 @@ import { Lancar } from './telas/Lancar';
 
 // As outras abas carregam só quando abertas.
 const Orientacao = lazy(() => import('./telas/Orientacao'));
+const Resumo = lazy(() => import('./telas/Resumo'));
 const Painel = lazy(() => import('./telas/Painel'));
 const Admin = lazy(() => import('./telas/Admin'));
 
-type Tela = 'lancar' | 'orientacao' | 'painel' | 'admin';
+type Tela = 'lancar' | 'orientacao' | 'resumo' | 'painel' | 'admin';
 interface Rota { tela: Tela; id: string | null }
 
 const CHAVE_OP = 'diario-skin:op';
+/** Quem deixou o aplicativo na aba Resumo (a chefia) volta para ela ao abrir de novo. */
+const CHAVE_TELA = 'diario-skin:tela';
 
 function lerRota(): Rota {
   const [tela, id] = window.location.hash.replace(/^#\/?/, '').split('/');
-  if (tela === 'painel' || tela === 'admin' || tela === 'orientacao') return { tela, id: id || null };
+  if (tela === 'painel' || tela === 'admin' || tela === 'orientacao' || tela === 'resumo') return { tela, id: id || null };
   return { tela: 'lancar', id: tela === 'lancar' ? id || null : null };
 }
 
@@ -47,6 +50,7 @@ const PAPEIS = { operador: 'Operador', pd: 'P&D', admin: 'Administrador' } as co
 const ABAS: { tela: Tela; nome: string; curto: string }[] = [
   { tela: 'lancar', nome: 'Lançar OP', curto: 'Lançar' },
   { tela: 'orientacao', nome: 'Orientação', curto: 'Orientar' },
+  { tela: 'resumo', nome: 'Resumo', curto: 'Resumo' },
   { tela: 'painel', nome: 'Painel P&D', curto: 'Painel' },
   { tela: 'admin', nome: 'Administração', curto: 'Admin' },
 ];
@@ -76,6 +80,7 @@ export function App() {
   useEffect(() => {
     if (!e.pronto || rota.tela !== 'lancar' || rota.id) return;
     try {
+      if (!window.location.hash && localStorage.getItem(CHAVE_TELA) === 'resumo') { irPara('resumo'); return; }
       const ultima = localStorage.getItem(CHAVE_OP);
       if (ultima && e.ops.some((o) => o.id === ultima && o.status === 'aberta')) irPara('lancar', ultima);
     } catch { /* sem armazenamento */ }
@@ -86,6 +91,7 @@ export function App() {
   useEffect(() => {
     try {
       if (rota.tela === 'lancar' && rota.id) localStorage.setItem(CHAVE_OP, rota.id);
+      if (window.location.hash) localStorage.setItem(CHAVE_TELA, rota.tela);
     } catch { /* sem armazenamento */ }
     if (rota.tela !== 'lancar' || rota.id !== e.rascunho?.id) descartarRascunho();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -156,6 +162,7 @@ export function App() {
           {tela === 'orientacao' && (
             <Orientacao opId={opOrientacao} escolherOp={(id) => irPara('orientacao', id)} abrirNoLancamento={(id) => irPara('lancar', id)} />
           )}
+          {tela === 'resumo' && <Resumo abrirNoLancamento={(id) => irPara('lancar', id)} />}
           {tela === 'painel' && <Painel abrirNoLancamento={(id) => irPara('lancar', id)} />}
           {tela === 'admin' && ehAdmin && <Admin />}
         </Suspense>

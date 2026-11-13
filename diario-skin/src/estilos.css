@@ -376,3 +376,14 @@ dialog::backdrop { background: rgba(10, 15, 20, .6); }
 .seg.duas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .seg.duas button { white-space: nowrap; padding-left: 6px; padding-right: 6px; }
 .notice.conf { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---------- resumo (acompanhamento) ---------- */
+.seg.quatro { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.seg.quatro button { padding-left: 4px; padding-right: 4px; white-space: nowrap; }
+.destaque { display: flex; flex-direction: column; gap: 2px; }
+.destaque .l { font-size: 13.5px; color: var(--muted); }
+.destaque .v { font-family: var(--f-disp); font-size: clamp(52px, 16vw, 76px); font-weight: 600; line-height: 1; letter-spacing: -.01em; }
+.destaque .s { font-size: 14px; color: var(--muted); }
+.ops-cartoes.sempre { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 8px; }
+/* Cinco abas (administrador) no celular estreito. */
+@media (max-width: 420px) { .abas a { font-size: 14px; padding-left: 3px; padding-right: 3px; } .abas { gap: 2px; } }

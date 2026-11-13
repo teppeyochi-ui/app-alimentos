@@ -282,3 +282,111 @@ export function Dispersao({ pontos, nomeX, nomeY, yPercentual, casasY, casasX, m
     </div>
   );
 }
+
+// ------------------------------------------------------------------ tendência por dia
+
+export interface PontoTendencia {
+  /** AAAA-MM-DD */
+  data: string;
+  /** Fração (0,85 = 85%). */
+  valor: number;
+  /** Linha extra da dica, ex.: "2 OPs · 2.400 bandejas". */
+  detalhe: string;
+}
+
+const diaDoAno = (data: string): number => {
+  const [a, m, d] = data.split('-').map(Number);
+  return Date.UTC(a, m - 1, d) / 86400000;
+};
+const dataCurtaBR = (data: string): string => `${data.slice(8, 10)}/${data.slice(5, 7)}`;
+
+/**
+ * Uma série, uma linha: o indicador de cada dia ao longo do tempo. O eixo
+ * horizontal é o calendário (dia sem produção fica vazio, não é escondido).
+ * A linha tracejada marca a faixa "bom" (referência, com rótulo).
+ */
+export function Tendencia({ pontos, nome, referencia, nomeReferencia }: {
+  pontos: PontoTendencia[]; nome: string; referencia?: number; nomeReferencia?: string;
+}) {
+  const [ref, largura] = useLargura<HTMLDivElement>();
+  const { dica, mostrar, esconder } = useDica();
+  const W = Math.max(largura, 280);
+  const H = 210;
+  const M = { e: 44, d: 18, t: 24, b: 30 };
+
+  const valores = pontos.map((p) => p.valor).concat(referencia != null ? [referencia] : []);
+  const ey = escala(Math.max(0, Math.min(...valores) - 0.02), Math.min(1.05, Math.max(...valores) + 0.02));
+  const dias = pontos.map((p) => diaDoAno(p.data));
+  const d0 = Math.min(...dias);
+  const d1 = Math.max(...dias);
+  const sx = (d: number) => (d1 === d0 ? (M.e + W - M.d) / 2 : M.e + ((d - d0) / (d1 - d0)) * (W - M.e - M.d));
+  const sy = (v: number) => M.t + (1 - (v - ey.min) / (ey.max - ey.min)) * (H - M.t - M.b);
+  const casas = casasDoPasso(ey.marcas.map((m) => m * 100));
+
+  const conteudo = (p: PontoTendencia) => (
+    <>
+      <b>{pct(p.valor, 1)}</b>
+      <div>{nome} em {dataCurtaBR(p.data)}/{p.data.slice(0, 4)}</div>
+      <div>{p.detalhe}</div>
+    </>
+  );
+  // Rótulos de data: primeiro e último dia; o do meio só se couber.
+  const rotulos = pontos.length <= 1 ? pontos : [pontos[0], pontos[pontos.length - 1]];
+  const meio = pontos.length >= 5 && W >= 420 ? pontos[Math.floor(pontos.length / 2)] : null;
+
+  return (
+    <div className="dispersao" ref={ref}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`} height={H} role="group"
+        aria-label={`${nome} por dia, de ${dataCurtaBR(pontos[0].data)} a ${dataCurtaBR(pontos[pontos.length - 1].data)}. ${pontos.length} ${pontos.length === 1 ? 'dia' : 'dias'} com produção.`}
+      >
+        {ey.marcas.map((v) => (
+          <g key={v}>
+            <line className="grade" x1={M.e} x2={W - M.d} y1={sy(v)} y2={sy(v)} />
+            <text x={M.e - 8} y={sy(v) + 4} textAnchor="end">{pct(v, casas)}</text>
+          </g>
+        ))}
+        {referencia != null && (
+          <g>
+            <line x1={M.e} x2={W - M.d} y1={sy(referencia)} y2={sy(referencia)} stroke="var(--muted)" strokeWidth={1} strokeDasharray="4 4" />
+            <text x={W - M.d} y={sy(referencia) - 5} textAnchor="end">{nomeReferencia}</text>
+          </g>
+        )}
+        {pontos.length > 1 && (
+          <polyline
+            fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"
+            points={pontos.map((p) => `${sx(diaDoAno(p.data))},${sy(p.valor)}`).join(' ')}
+          />
+        )}
+        {[...rotulos, ...(meio ? [meio] : [])].map((p, i) => (
+          <text
+            key={p.data} x={sx(diaDoAno(p.data))} y={H - 8}
+            textAnchor={pontos.length === 1 || p === meio ? 'middle' : i === 0 ? 'start' : 'end'}
+          >
+            {dataCurtaBR(p.data)}
+          </text>
+        ))}
+        {pontos.map((p) => {
+          const x = sx(diaDoAno(p.data));
+          const y = sy(p.valor);
+          const abrir = (ev: PointerEvent<SVGGElement>) => mostrar(ev.clientX, ev.clientY, conteudo(p));
+          return (
+            <g
+              key={p.data} className="ponto" tabIndex={0} role="img"
+              aria-label={`${dataCurtaBR(p.data)}: ${pct(p.valor, 1)}. ${p.detalhe}`}
+              transform={`translate(${x},${y})`}
+              onPointerEnter={abrir} onPointerDown={abrir} onPointerLeave={(ev) => { if (ev.pointerType === 'mouse') esconder(); }}
+              onFocus={(ev) => { const r = ev.currentTarget.getBoundingClientRect(); mostrar(r.left + r.width / 2, r.bottom, conteudo(p)); }}
+              onBlur={esconder}
+            >
+              {/* Alvo de toque maior que a marca. */}
+              <circle r={22} fill="transparent" />
+              <circle r={4.5} fill="var(--accent)" stroke="var(--surface)" strokeWidth={2} className="anel" />
+            </g>
+          );
+        })}
+      </svg>
+      <Dica dica={dica} />
+    </div>
+  );
+}

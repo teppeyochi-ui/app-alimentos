@@ -12,7 +12,7 @@ import { hojeISO, uuid } from './formato';
 import { historicoDoCsv, produtosDoCsv } from './semente';
 import type { Servidor } from './servidor';
 import type {
-  Foto, MoldeInfo, MotivoRetrabalho, Op, OpLocal, Perfil, Produto, ReceitaPadrao,
+  AnaliseIa, Foto, Molde, MoldeInfo, MotivoRetrabalho, Op, OpLocal, Perfil, Produto, ReceitaPadrao,
 } from './tipos';
 
 export interface EstadoSync {
@@ -115,6 +115,43 @@ const RECEITA_LOCAL: ReceitaPadrao = {
 const local = (op: Op, sujo: boolean): OpLocal => ({ ...op, _sujo: sujo, _paradas_removidas: [], _fotos_removidas: [] });
 
 /**
+ * Versão do catálogo embutido (modo local). Ao mudar o CSV, some 1: os aparelhos
+ * que já tinham o catálogo antigo recebem os produtos e campos novos ao abrir.
+ */
+export const VERSAO_SEMENTE = 2;
+
+/**
+ * Junta o catálogo embutido com o que já estava no aparelho: produto novo entra;
+ * no que já existia, valem os dados da planilha, mas ficam o "ativo" e o que o
+ * aparelho já tinha preenchido e a planilha não traz (molde, embalagens por caixa).
+ */
+export function mesclarCatalogo(noAparelho: Produto[], daSemente: Produto[]): Produto[] {
+  const porCodigo = new Map(noAparelho.map((p) => [p.codigo, p]));
+  for (const novo of daSemente) {
+    const atual = porCodigo.get(novo.codigo);
+    // Molde já confirmado neste aparelho vale mais do que o da planilha.
+    const confirmado = atual?.molde != null && atual.molde_a_confirmar === false && novo.molde_a_confirmar;
+    porCodigo.set(novo.codigo, atual
+      ? {
+          ...novo,
+          molde: confirmado ? atual.molde : novo.molde ?? atual.molde ?? null,
+          molde_a_confirmar: confirmado ? false : novo.molde_a_confirmar,
+          embalagens_por_caixa: atual.embalagens_por_caixa ?? novo.embalagens_por_caixa,
+          ativo: atual.ativo,
+        }
+      : novo);
+  }
+  return [...porCodigo.values()].sort((a, b) => a.codigo.localeCompare(b.codigo));
+}
+
+/** Produtos e OPs gravados por versões anteriores não têm os campos novos. */
+const produtoCompleto = (p: Produto): Produto => ({
+  ...p, derivacao: p.derivacao ?? null, peso_caixa_kg: p.peso_caixa_kg ?? null, especie: p.especie ?? null,
+  molde_a_confirmar: p.molde_a_confirmar ?? p.molde == null,
+});
+const opCompleta = (o: OpLocal): OpLocal => (o.analise_ia === undefined ? { ...o, analise_ia: null } : o);
+
+/**
  * Catálogo e histórico da especificação, para a primeira abertura em modo local.
  * No build com servidor configurado esta parte é descartada: os dados de
  * produção não vão dentro do aplicativo publicado, só vêm do banco, depois do login.
@@ -127,7 +164,7 @@ const carregarSemente =
 export async function iniciarLoja(opcoes: { servidor: Servidor | null }): Promise<void> {
   servidor = opcoes.servidor;
   revisoes.clear();
-  const [ops, fotos, produtos, moldes, receitas, perfis, perfil, ultimo] = await Promise.all([
+  const [opsGravadas, fotos, produtosGravados, moldes, receitas, perfis, perfil, ultimo, versaoSemente] = await Promise.all([
     bancoLocal.todasOps(),
     bancoLocal.todasFotos(),
     bancoLocal.ler<Produto[]>('produtos'),
@@ -136,7 +173,10 @@ export async function iniciarLoja(opcoes: { servidor: Servidor | null }): Promis
     bancoLocal.ler<Perfil[]>('perfis'),
     bancoLocal.ler<Perfil>('perfil'),
     bancoLocal.ler<string>('ultimo_sync'),
+    bancoLocal.ler<number>('versao_semente'),
   ]);
+  const ops = opsGravadas.map(opCompleta);
+  const produtos = produtosGravados?.map(produtoCompleto);
 
   const base: Partial<Estado> = {
     pronto: true,
@@ -164,12 +204,19 @@ export async function iniciarLoja(opcoes: { servidor: Servidor | null }): Promis
       bancoLocal.gravar('produtos', semente),
       bancoLocal.gravar('moldes', MOLDES_FABRICA),
       bancoLocal.gravar('receitas', [RECEITA_LOCAL]),
+      bancoLocal.gravar('versao_semente', VERSAO_SEMENTE),
       bancoLocal.gravarOps(novas),
     ]);
     base.produtos = semente;
     base.moldes = MOLDES_FABRICA;
     base.receitas = [RECEITA_LOCAL];
     base.ops = [...ops, ...novas];
+  } else if (!servidor && produtos && carregarSemente && (versaoSemente ?? 1) < VERSAO_SEMENTE) {
+    // Modo local, aparelho que já tinha um catálogo mais antigo: recebe o novo sem perder nada.
+    const [catalogoCsv] = await carregarSemente();
+    const mesclado = mesclarCatalogo(produtos, produtosDoCsv(catalogoCsv.default).produtos);
+    await Promise.all([bancoLocal.gravar('produtos', mesclado), bancoLocal.gravar('versao_semente', VERSAO_SEMENTE)]);
+    base.produtos = mesclado;
   }
 
   definir(base);
@@ -306,6 +353,7 @@ export function novaOp(): OpLocal {
     alterado_por: idPerfil(),
     alterado_em: agora,
     fechada_em: null,
+    analise_ia: null,
     retrabalho: { ...RETRABALHO_ZERADO },
     paradas: [],
     fotos: [],
@@ -334,17 +382,38 @@ export function embalagensPorCaixaConhecido(produto: Produto): number | null {
   return anteriores[0]?.embalagens_por_caixa ?? null;
 }
 
-/** Escolher o produto preenche molde, peso nominal, filme de tampa e embalagens por caixa. */
+/** Molde usado na OP mais recente deste SKU (para o SKU que o catálogo ainda não confirmou). */
+export function moldeDaUltimaOp(codigo: string): Molde | null {
+  const anteriores = estado.ops
+    .filter((o) => o.produto_codigo === codigo && o.status !== 'cancelada')
+    .sort((a, b) => (b.data ?? '').localeCompare(a.data ?? '') || (b.criado_em ?? '').localeCompare(a.criado_em ?? ''));
+  return anteriores[0]?.molde ?? null;
+}
+
+/**
+ * Escolher o produto preenche molde, peso nominal, filme de tampa e embalagens
+ * por caixa. No produto de peso variável (PDV) sem valor conhecido, embalagens
+ * por caixa fica vazio para o operador informar.
+ */
 export function escolherProduto(id: string, produto: Produto): void {
-  mudarOp(id, (op) => ({
-    ...op,
-    produto_codigo: produto.codigo,
-    produto_descricao: produto.descricao,
-    molde: produto.molde,
-    peso_nominal_kg: produto.peso_nominal_kg,
-    filme_tampa: filmeTampaSugerido(produto.molde),
-    embalagens_por_caixa: embalagensPorCaixaConhecido(produto) ?? op.embalagens_por_caixa,
-  }));
+  mudarOp(id, (op) => {
+    // SKU sem molde no catálogo: sugere o da última OP do mesmo SKU.
+    const molde = produto.molde ?? moldeDaUltimaOp(produto.codigo) ?? op.molde;
+    return {
+      ...op,
+      produto_codigo: produto.codigo,
+      produto_descricao: produto.descricao,
+      molde,
+      peso_nominal_kg: produto.peso_nominal_kg,
+      filme_tampa: filmeTampaSugerido(molde),
+      embalagens_por_caixa: embalagensPorCaixaConhecido(produto),
+    };
+  });
+}
+
+/** Guarda na OP a avaliação da foto do produto feita pela IA. */
+export function gravarAnaliseIa(id: string, analise: AnaliseIa): void {
+  mudarOp(id, (op) => ({ ...op, analise_ia: analise }));
 }
 
 export function escolherProdutoOutro(id: string, nome: string): void {
@@ -489,7 +558,7 @@ export async function receberCadastros(c: {
     bancoLocal.gravar('perfis', c.perfis),
   ]);
   definir({
-    produtos: c.produtos,
+    produtos: c.produtos.map(produtoCompleto),
     moldes: c.moldes.length ? c.moldes : MOLDES_FABRICA,
     receitas: c.receitas,
     perfis: c.perfis,

@@ -5,7 +5,7 @@ import {
 } from '../../src/lib/calc';
 import { RECEITA_FABRICA, RETRABALHO_ZERADO } from '../../src/lib/constantes';
 import { gramas, kg, lerNumero, num, pct } from '../../src/lib/formato';
-import { historicoDoCsv, produtosDoCsv } from '../../src/lib/semente';
+import { embalagensPorCaixaCalculado, historicoDoCsv, pesoCaixaDaDerivacao, produtosDoCsv } from '../../src/lib/semente';
 import type { Op, ReceitaPadrao } from '../../src/lib/tipos';
 
 const catalogo = produtosDoCsv(readFileSync('dados/catalogo.csv', 'utf8'));
@@ -20,10 +20,45 @@ const base: Pick<Op,
 };
 
 describe('carga inicial', () => {
-  it('catálogo tem 91 produtos, sem erro e sem código repetido', () => {
+  it('catálogo tem os 118 SKUs da planilha de produtos, sem erro e sem código repetido', () => {
     expect(catalogo.erros).toEqual([]);
-    expect(catalogo.produtos).toHaveLength(91);
-    expect(new Set(catalogo.produtos.map((p) => p.codigo)).size).toBe(91);
+    expect(catalogo.produtos).toHaveLength(118);
+    expect(new Set(catalogo.produtos.map((p) => p.codigo)).size).toBe(118);
+    expect(catalogo.produtos.every((p) => p.derivacao && p.especie)).toBe(true);
+  });
+
+  it('a caixa escrita na derivação dá o peso da caixa e as embalagens por caixa', () => {
+    expect(pesoCaixaDaDerivacao('FRESCATTO CXA 7,5')).toBe(7.5);
+    expect(pesoCaixaDaDerivacao('FRESCATTO ISP CXA 04')).toBe(4);
+    expect(pesoCaixaDaDerivacao('ARDAPEZ CXA 18,144')).toBe(18.144);
+    expect(pesoCaixaDaDerivacao('FRESC CXA PDV PF')).toBeNull();
+    expect(pesoCaixaDaDerivacao('TAB')).toBeNull();
+    expect(embalagensPorCaixaCalculado(7.5, 0.5)).toBe(15);
+    expect(embalagensPorCaixaCalculado(4, 0.24)).toBeNull(); // 16,7: a conta não fecha
+    expect(embalagensPorCaixaCalculado(8, null)).toBeNull(); // PDV
+
+    const pescada = catalogo.produtos.find((x) => x.codigo === '10068093246591-964');
+    expect(pescada).toMatchObject({ derivacao: 'FRESCATTO CXA 7,5', peso_caixa_kg: 7.5, peso_nominal_kg: 0.5, embalagens_por_caixa: 15, especie: 'PESCADA AMARELA' });
+    const salmao = catalogo.produtos.find((x) => x.codigo === '24616701063781-975');
+    expect(salmao).toMatchObject({ derivacao: 'FRESCATTO CXA 09', peso_caixa_kg: 9, embalagens_por_caixa: 15 });
+  });
+
+  it('produto de peso variável (PDV) fica sem embalagens por caixa, para o operador informar', () => {
+    const pdv = catalogo.produtos.filter((p) => p.peso_nominal_kg == null);
+    expect(pdv).toHaveLength(64);
+    expect(pdv.every((p) => p.embalagens_por_caixa == null)).toBe(true);
+    const dourado = catalogo.produtos.find((x) => x.codigo === '06042002001341-1058');
+    expect(dourado).toMatchObject({ derivacao: 'FRESC CXA PDV PF', peso_caixa_kg: null, peso_nominal_kg: null, embalagens_por_caixa: null });
+  });
+
+  it('SKU de filial herda o molde do mesmo produto e pede confirmação; 6 ficam sem molde', () => {
+    expect(catalogo.produtos.find((x) => x.codigo === '2461670106378F-975')).toMatchObject({ molde: '2x1', molde_a_confirmar: true });
+    expect(catalogo.produtos.find((x) => x.codigo === '24616701063781-975')).toMatchObject({ molde: '2x1', molde_a_confirmar: false });
+    expect(catalogo.produtos.filter((p) => p.molde_a_confirmar)).toHaveLength(27);
+    expect(catalogo.produtos.filter((p) => p.molde_a_confirmar && p.molde != null)).toHaveLength(21);
+    expect(catalogo.produtos.filter((p) => p.molde == null).map((p) => p.codigo).sort()).toEqual([
+      '0622203000134F-1058', '0634402500133F-1058', '0908409931213E-086', '0908409931413E-086', '0908409931513E-086', '0938907200103M-815',
+    ]);
   });
 
   it('critério 1: produto 16507014073621-011 é molde 3x1 e peso nominal 0,2 kg', () => {
@@ -119,7 +154,7 @@ describe('regras', () => {
   it('lista o que falta para encerrar', () => {
     const op = { ...base, hora_fim: null, passo_fim: null, caixas: null, peso_final_kg: null, embalagens_por_caixa: null, peso_nominal_kg: null };
     const v = validarEncerramento(op, calcular(op, MOLDES_FABRICA));
-    expect(v.faltas).toEqual(['hora de fim', 'passo no fim', 'caixas', 'peso final', 'embalagens por caixa ou peso nominal']);
+    expect(v.faltas).toEqual(['hora de fim', 'passo no fim', 'caixas', 'peso final', 'embalagens por caixa (produto de peso variável)']);
   });
 
   it('parâmetros alterados em relação à receita padrão', () => {

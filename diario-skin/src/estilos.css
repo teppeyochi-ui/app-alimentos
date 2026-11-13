@@ -346,3 +346,33 @@ dialog::backdrop { background: rgba(10, 15, 20, .6); }
 .linha-adm .t { overflow-wrap: anywhere; }
 
 .faixa { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+
+/* ---------- orientação ---------- */
+.chip.ok { background: var(--ok-soft); border-color: transparent; color: var(--ink); }
+.cfg { display: flex; flex-direction: column; }
+.linha-cfg { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding: 8px 0; }
+.linha-cfg > div { min-width: 0; flex: 1 1 200px; }
+.linha-cfg .chip { flex: none; max-width: 100%; white-space: normal; }
+.regra { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; }
+.regra-cab { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: space-between; }
+.lista-simples { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 14.5px; }
+.tabela-efeito { display: flex; flex-direction: column; font-size: 13.5px; }
+.tabela-efeito > div { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); gap: 8px; padding: 6px 8px; border-radius: 8px; }
+.tabela-efeito > div > span:not(:first-child) { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.tabela-efeito .cab { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.tabela-efeito .melhor { background: var(--ok-soft); font-weight: 600; }
+.botao-link { display: inline-flex; align-items: center; min-height: var(--toque); color: var(--accent); font-weight: 600; text-decoration: underline; align-self: flex-start; }
+
+/* ---------- abas: nome curto no celular estreito ---------- */
+.abas a { min-width: 0; }
+.abas .curto { display: none; }
+@media (max-width: 560px) {
+  .abas .longo { display: none; }
+  .abas .curto { display: inline; }
+  .abas a { padding-left: 6px; padding-right: 6px; }
+}
+
+/* Escolha entre duas opções ocupando a largura toda (confirmação de molde). */
+.seg.duas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.seg.duas button { white-space: nowrap; padding-left: 6px; padding-right: 6px; }
+.notice.conf { display: flex; flex-direction: column; gap: 8px; }

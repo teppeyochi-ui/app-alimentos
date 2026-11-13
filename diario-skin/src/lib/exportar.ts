@@ -4,7 +4,7 @@ import { calcular, parametrosAlterados, parametrosDaReceita, receitaVigente } fr
 import { MOTIVOS_RETRABALHO, PARAMETROS } from './constantes';
 import { gerarCsv, type Celula } from './csv';
 import { hojeISO } from './formato';
-import type { MoldeInfo, Op, Perfil, ReceitaPadrao } from './tipos';
+import type { MoldeInfo, Op, Perfil, Produto, ReceitaPadrao } from './tipos';
 import type { Planilha } from './xlsx';
 
 export interface DadosExportacao {
@@ -12,6 +12,8 @@ export interface DadosExportacao {
   moldes: MoldeInfo[];
   receitas: ReceitaPadrao[];
   perfis: Perfil[];
+  /** Catálogo, para trazer a derivação e a espécie de cada SKU. */
+  produtos?: Produto[];
 }
 
 /** Arredonda para tirar o ruído de ponto flutuante (0,8250000001). */
@@ -24,11 +26,12 @@ const pc = (v: number | null): number | null => (v == null ? null : arr(v * 100,
 
 export function tabelaOps(d: DadosExportacao): Planilha {
   const nome = (id: string | null) => (id ? d.perfis.find((p) => p.id === id)?.nome ?? '' : '');
+  const produto = (codigo: string | null) => (codigo ? d.produtos?.find((p) => p.codigo === codigo) : undefined);
   const cabecalho = [
-    'Data', 'Código', 'Produto', 'OP', 'Origem', 'Status', 'Molde', 'Peso nominal (kg)', 'Embalagens por caixa',
+    'Data', 'Código', 'Produto', 'Derivação', 'Espécie', 'OP', 'Origem', 'Status', 'Molde', 'Peso nominal (kg)', 'Embalagens por caixa',
     'Lote da matéria-prima', 'Temp. do produto (°C)', 'Filme de fundo', 'Filme de tampa', 'Lote do filme',
     'Hora de início', 'Hora de fim', 'Passo no início', 'Passo no fim', 'Caixas', 'Embalagens avulsas',
-    'Peso final (kg)', 'Aparência',
+    'Peso final (kg)', 'Aparência', 'Nota de aparência (IA)', 'Diagnóstico (IA)',
     ...PARAMETROS.map((p) => `${p.nome} (${p.unidade})`),
     'Origem dos parâmetros', 'Parâmetros alterados',
     'Bandejas formadas', 'Embalagens boas', 'Aproveitamento (%)', 'Retrabalho', 'Retrabalho (%)', 'Vazias', 'Vazias (%)',
@@ -46,10 +49,11 @@ export function tabelaOps(d: DadosExportacao): Planilha {
       .map((k) => PARAMETROS.find((p) => p.chave === k)?.nome ?? k)
       .join(', ');
     return [
-      o.data, o.produto_codigo, o.produto_descricao, o.op, o.origem, o.status, o.molde, o.peso_nominal_kg, o.embalagens_por_caixa,
+      o.data, o.produto_codigo, o.produto_descricao, produto(o.produto_codigo)?.derivacao, produto(o.produto_codigo)?.especie,
+      o.op, o.origem, o.status, o.molde, o.peso_nominal_kg, o.embalagens_por_caixa,
       o.lote_mp, o.temp_produto_c, o.filme_fundo, o.filme_tampa, o.lote_filme,
       o.hora_inicio, o.hora_fim, o.passo_inicio, o.passo_fim, o.caixas, o.embalagens_avulsas,
-      o.peso_final_kg, o.aparencia,
+      o.peso_final_kg, o.aparencia, o.analise_ia?.nota_aparencia, o.analise_ia?.diagnostico,
       ...PARAMETROS.map((p) => o[p.chave]),
       o.parametros_origem, alterados,
       c.bandejas_formadas, c.embalagens_boas, pc(c.aproveitamento), c.retrabalho, pc(c.retrabalho_pct), c.vazias, pc(c.vazias_pct),

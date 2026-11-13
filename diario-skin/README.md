@@ -13,11 +13,13 @@ O que está pronto, pelas fases da especificação:
 |---|---|---|
 | 1 | Banco, login, catálogo e histórico, Lançar OP com fotos, cálculo ao vivo, offline, instalação | Pronto e testado |
 | 2 | Painel P&D, detalhe e comparação de OPs, exportação CSV/XLSX, administração | Pronto e testado |
-| 3 | Leitura automática das telas pelas fotos | Código pronto; **falta testar com as três fotos reais** (ver [passo 6](#6-leitura-automática-das-telas-opcional)) |
+| 3 | Leitura automática das telas pelas fotos | Código pronto; **falta testar com as três fotos reais** (ver [passo 6](#6-leitura-das-fotos-por-ia-opcional)) |
+| 4 | Catálogo pela planilha de produtos (SKU, derivação, caixa), aba **Orientação** para o operador | Pronto e testado |
+| 4 | Avaliação da foto do produto por IA, cruzada com os parâmetros | Código pronto; **falta testar com fotos reais e a API da Anthropic** |
 
 ## Experimentar agora, sem servidor
 
-Sem configurar nada, o aplicativo roda em **modo local**: funciona inteiro, com o catálogo e o histórico da especificação, mas os dados ficam só no aparelho e não há login.
+Sem configurar nada, o aplicativo roda em **modo local**: lançamento, orientação e painel funcionam, com o catálogo e o histórico, mas os dados ficam só no aparelho e não há login. O que **não** funciona em modo local é o que depende da IA: ler os valores da foto da tela e avaliar a foto do produto.
 
 ```bash
 cd diario-skin
@@ -56,6 +58,8 @@ Depois dos passos 1 a 4 abaixo, crie duas variáveis no GitHub, em *Settings →
 
 ## Colocar no ar, passo a passo
 
+Para quem não é da área técnica, o mesmo caminho está em [LIGAR-SUPABASE.md](LIGAR-SUPABASE.md), com os links diretos de cada etapa.
+
 Os nomes dos menus do Supabase mudam de vez em quando; se algum não bater, procure pelo nome mais parecido.
 
 ### 1. Criar o projeto no Supabase
@@ -68,7 +72,7 @@ Os nomes dos menus do Supabase mudam de vez em quando; se algum não bater, proc
 1. No painel do projeto, abra **SQL Editor**.
 2. Cole todo o conteúdo de [`supabase/instalar.sql`](supabase/instalar.sql) e clique em **Run**.
 
-Esse arquivo cria as tabelas, as permissões, a função de gravação, a view `ops_indicadores`, o bucket de fotos `fotos-op` e carrega os moldes, a receita padrão, os 91 produtos e as 15 produções do histórico. Rode **uma vez**, num projeto novo.
+Esse arquivo cria as tabelas, as permissões, a função de gravação, a view `ops_indicadores`, o bucket de fotos `fotos-op` e carrega os moldes, a receita padrão, os 118 SKUs do catálogo e as 15 produções do histórico. Rode **uma vez**, num projeto novo.
 
 Quem preferir a linha de comando do Supabase pode usar os arquivos separados: `supabase/migrations/*.sql` (na ordem) e depois `supabase/seed.sql`.
 
@@ -113,12 +117,17 @@ Funciona em Vercel, Netlify e Cloudflare Pages ligando o repositório do GitHub.
 
 Com as duas variáveis preenchidas, o catálogo e o histórico **não** vão dentro do aplicativo publicado: só chegam do banco, depois do login.
 
-### 6. Leitura automática das telas (opcional)
+### 6. Leitura das fotos por IA (opcional)
 
-O botão **Ler valores das fotos** chama a função `ler-telas`, que roda no Supabase e consulta a API da Anthropic. A chave da Anthropic fica só no servidor.
+Duas funções rodam no Supabase e consultam a API da Anthropic. A chave da Anthropic fica só no servidor.
+
+| Função | O que faz | Onde aparece |
+|---|---|---|
+| `ler-telas` | Lê os 12 parâmetros nas fotos das telas 412, 414 e 417 | Lançar OP: ao fotografar a tela, os campos são preenchidos na hora |
+| `analisar-op` | Avalia a foto do produto final junto com os parâmetros, o retrabalho e as OPs anteriores | Orientação: botão **Avaliar a foto com IA** |
 
 1. Crie uma chave em [platform.claude.com](https://platform.claude.com).
-2. Na pasta `diario-skin`, publique a função e grave a chave, trocando `SEU_PROJETO` pelo identificador do projeto (aparece no endereço do painel):
+2. Na pasta `diario-skin`, publique as funções e grave a chave, trocando `SEU_PROJETO` pelo identificador do projeto (aparece no endereço do painel):
 
 ```bash
 npx supabase login
@@ -129,14 +138,20 @@ npx supabase functions deploy ler-telas --project-ref SEU_PROJETO
 ```
 
 ```bash
+npx supabase functions deploy analisar-op --project-ref SEU_PROJETO
+```
+
+```bash
 npx supabase secrets set ANTHROPIC_API_KEY=sua-chave --project-ref SEU_PROJETO
 ```
 
-Se a ferramenta pedir, rode `npx supabase init` antes. Também dá para criar a função pelo painel (*Edge Functions*), copiando os três arquivos de `supabase/functions/ler-telas/`, e gravar a chave em *Edge Functions → Secrets*.
+Se a ferramenta pedir, rode `npx supabase init` antes. Também dá para criar cada função pelo painel (*Edge Functions*), copiando os três arquivos da pasta dela em `supabase/functions/`, e gravar a chave em *Edge Functions → Secrets*.
 
-3. **Teste de aceite que ainda falta:** fotografe as telas 417, 414 e 412 com a receita padrão e confira se voltam os 12 valores de referência (tDome 225, tPre 110, T1 0,8, T2 1,0, T4 0,0, T5 0,0, T6 4,0, T7 0,2, pVent 500, sp 40, Tx 0,5, Tmax 10,0). Se algum campo vier errado, o ajuste é no texto da instrução, em `supabase/functions/ler-telas/leitura.ts`.
+3. **Testes de aceite que ainda faltam:**
+   - `ler-telas`: fotografe as telas 417, 414 e 412 com a receita padrão e confira se voltam os 12 valores de referência (tDome 225, tPre 110, T1 0,8, T2 1,0, T4 0,0, T5 0,0, T6 4,0, T7 0,2, pVent 500, sp 40, Tx 0,5, Tmax 10,0). Se algum campo vier errado, o ajuste é no texto da instrução, em `supabase/functions/ler-telas/leitura.ts`.
+   - `analisar-op`: avalie fotos de embalagens boas e com defeito conhecido (ruga, furo, sem vácuo) e veja se a nota e o diagnóstico fazem sentido para o P&D. O ajuste é na instrução de `supabase/functions/analisar-op/analise.ts`.
 
-A função usa o modelo `claude-opus-5-5` (constante `MODELO` no mesmo arquivo). Cada leitura custa da ordem de centavos de dólar; confira os preços atuais antes de liberar para toda a equipe. Os valores lidos nunca são gravados sem o operador ver: os campos ficam marcados para conferência e o que vier fora dos limites é descartado.
+As funções usam o modelo `claude-opus-5-5` (constante `MODELO` em cada arquivo). Cada chamada custa da ordem de centavos de dólar; confira os preços atuais antes de liberar para toda a equipe. Nada do que a IA devolve é aplicado sozinho: os valores lidos ficam marcados para conferência, o que vier fora dos limites é descartado, e as sugestões de ajuste são só texto para o operador e o P&D decidirem.
 
 ### 7. Instalar no celular
 
@@ -155,6 +170,42 @@ O primeiro acesso precisa de internet (login e download do catálogo). Depois di
 - **Conflito entre aparelhos:** por OP, vence a edição mais recente (hora da edição no aparelho). Paradas e fotos se somam; só saem as que alguém removeu.
 - As fotos são reduzidas no aparelho (1800 px no lado maior, JPEG 0,82) e ficam guardadas nele até subirem para o bucket privado `fotos-op`. O painel as exibe com endereços assinados de curta duração.
 - "Nova OP" só vira OP de verdade quando recebe o primeiro dado, para não deixar OP vazia aberta por toque acidental.
+
+### Catálogo de produtos
+
+O catálogo vem da planilha de produtos do P&D (`dados/catalogo.csv`, 118 SKUs):
+
+| Coluna da planilha | No aplicativo |
+|---|---|
+| `SKU` | Código do produto |
+| `DESCR_PRO` | Descrição |
+| `DESCR_DER` (derivação) | Mostrada no lançamento e na busca. A caixa escrita nela vira o **peso da caixa**: “CXA 7,5” = 7,5 kg; “CXA PDV” = peso variável |
+| `DESCR_AGP` | Espécie: a orientação usa para comparar com produtos parecidos |
+| `MOLDE` | Molde. Onde a planilha diz “Não encontrado” (27 SKUs), o molde fica **a confirmar**: 21 herdam o molde do mesmo produto em outra origem e 6 ficam sem molde |
+
+**Molde a confirmar:** ao escolher um desses 27 SKUs, o lançamento mostra os botões **2x1** e **3x1**, com o molde herdado já marcado. A escolha vale para a OP e, feita pelo administrador (ou em modo local), fica gravada no catálogo: o SKU deixa de pedir confirmação. Operador e P&D escolhem o molde da OP, e a próxima OP do mesmo SKU já sugere esse molde. Em *Administração → Produtos*, a caixa “só os com molde a confirmar” lista os que faltam, com os mesmos dois botões. Em qualquer outro SKU, trocar o molde na OP faz o aplicativo avisar a diferença e oferecer “Corrigir o catálogo”.
+
+**Embalagens por caixa:**
+
+- **Peso fixo:** peso da caixa ÷ peso nominal (7,5 kg ÷ 500 g = 15). Vem preenchido e o operador pode corrigir.
+- **Peso variável (PDV):** não dá para calcular. O campo fica vazio, marcado em vermelho, e é obrigatório para encerrar a OP.
+- Em 4 SKUs de peso fixo a conta não fecha em número inteiro (por exemplo, caixa de 4 kg com embalagem de 240 g); neles o campo também fica para o operador.
+
+O aparelho que já usava o aplicativo em modo local recebe os SKUs e os campos novos na primeira abertura depois da atualização, sem perder o que tinha. Para atualizar o catálogo depois: *Administração → Produtos → Importar CSV* (aceita os nomes de coluna da planilha).
+
+### Orientação ao operador
+
+A aba **Orientação** responde, para uma OP: a configuração da máquina está boa, e o que tentar para melhorar? Funciona sem internet, só com os dados do aparelho.
+
+- **Como está esta OP:** aproveitamento, retrabalho, vazias e ritmo, com o que já foi lançado (a OP não precisa estar encerrada). Diz qual é a maior perda: bandeja vazia é da alimentação; retrabalho é que pede ajuste de máquina.
+- **Configuração × referência:** cada parâmetro contra a receita padrão e contra a faixa usada nas **melhores OPs** já encerradas. A base é, nesta ordem: OPs do mesmo produto; da mesma espécie no mesmo molde; do mesmo molde. As melhores são o terço de maior aproveitamento (de 1 a 5 OPs). Não entram OPs abertas, canceladas, sem parâmetros ou com menos de 100 bandejas.
+- **Retrabalho, o que conferir:** para cada defeito contado, o que olhar primeiro e quais parâmetros mexer, com o valor atual e o das melhores OPs.
+- **O que as OPs anteriores mostram:** para cada parâmetro que já foi usado com valores diferentes, o aproveitamento e o retrabalho médios em cada valor. Com menos de 3 OPs em algum valor, aparece como “indício fraco”.
+- **Foto do produto avaliada por IA** (precisa do servidor): nota de aparência de 0 a 10, defeitos vistos, diagnóstico e até 3 sugestões. A avaliação fica guardada na OP; no painel, “Nota de aparência da foto” é uma das opções do gráfico parâmetro × resultado, e a view `ops_indicadores` traz `nota_aparencia_ia`.
+
+> **A validar pelo P&D:** as regras por defeito (`src/lib/orientacao.ts`, `REGRAS_DEFEITO`) são orientações gerais do processo skin escritas para este aplicativo. Não vieram do manual da ULMA nem foram validadas na linha. Revise o texto antes de a equipe tratar como regra.
+
+No começo, sem OPs encerradas com parâmetros, a aba compara só com a receita padrão. A referência e a comparação por valor aparecem conforme as OPs do diário se acumulam: as 15 produções do histórico não têm parâmetros e não servem de referência.
 
 ### Permissões
 
@@ -183,6 +234,8 @@ No painel, **Exportar CSV** e **Exportar XLSX** geram uma linha por OP do filtro
 | `ops.status` aceita `cancelada` | A especificação previa: o administrador cancela, ninguém apaga |
 | `ops.data` pode ficar vazia no histórico da planilha | Duas das 15 linhas do histórico vieram sem data; no diário a data continua obrigatória |
 | `ops.sincronizado_em` (coluna nova) | Hora em que o servidor recebeu a gravação; os aparelhos baixam só o que mudou |
+| `ops.analise_ia` (coluna nova, JSON) | Última avaliação da foto do produto pela IA |
+| `produtos.derivacao`, `peso_caixa_kg`, `especie`, `molde_a_confirmar` (colunas novas); `produtos.molde` pode ficar vazio | Planilha de produtos do P&D: derivação, caixa e agrupamento; 27 SKUs com o molde a confirmar |
 | `receitas_padrao.ciclo_teorico_s` (coluna nova) | Ciclo teórico configurável (10,3 s na carga inicial) |
 | `perfis.ativo` começa `false` | Conta nova só entra depois de liberada |
 | Parâmetros alterados comparam com a receita que valia **na data da OP** | Mudar a receita padrão não reescreve a leitura das OPs antigas |
@@ -195,12 +248,12 @@ No painel, **Exportar CSV** e **Exportar XLSX** geram uma linha por OP do filtro
 ```
 diario-skin/
 ├─ src/
-│  ├─ lib/           cálculos, banco do aparelho, sincronização, login, exportação
-│  ├─ telas/         Lançar OP, Painel P&D, Detalhe/Comparação, Administração, Entrar
+│  ├─ lib/           cálculos, orientação, banco do aparelho, sincronização, login, exportação
+│  ├─ telas/         Lançar OP, Orientação, Painel P&D, Detalhe/Comparação, Administração, Entrar
 │  └─ componentes/   campos, fotos, seletor de produto, gráficos
 ├─ supabase/
 │  ├─ migrations/    tabelas, permissões, salvar_op, view, bucket de fotos
-│  ├─ functions/     ler-telas (leitura das fotos das telas)
+│  ├─ functions/     ler-telas (lê as fotos das telas) e analisar-op (avalia a foto do produto)
 │  ├─ seed.sql       carga inicial (gerada)
 │  └─ instalar.sql   tudo acima num arquivo só (gerado)
 ├─ dados/            catalogo.csv e historico.csv (origem da carga inicial)
@@ -214,18 +267,20 @@ Depois de alterar um CSV de `dados/` ou uma migração, rode `npm run sql` para 
 
 | Comando | O que confere | Precisa de |
 |---|---|---|
-| `npm test` | Cálculos (critérios 1 a 3), carga inicial, sincronização com servidor simulado, CSV e XLSX | Node |
+| `npm test` | Cálculos (critérios 1 a 3), catálogo (derivação, caixa, PDV), orientação, sincronização com servidor simulado, CSV e XLSX | Node |
 | `npm run test:banco` | Migrações, carga, view (critérios 2 e 3), permissões (critério 5), `salvar_op` sem duplicar, num PostgreSQL temporário | PostgreSQL 15+ |
-| `npm run test:navegador` | Fluxo completo em celular de 360 px, modo local: critérios 1, 2, 3, uso em modo avião, rolagem e alvos de toque (critério 6), painel, exportação | Chromium (Playwright) |
-| `npm run test:integrado` | O aplicativo com login contra um PostgreSQL temporário com as migrações reais: modo avião → sincronização sem duplicar (critério 4), operador × P&D em OP fechada (critério 5), liberação de usuário | PostgreSQL 15+ e Chromium |
+| `npm run test:navegador` | Fluxo completo em celular de 360 px, modo local: critérios 1, 2, 3, produto PDV, uso em modo avião, rolagem e alvos de toque (critério 6), orientação, painel, exportação | Chromium (Playwright) |
+| `npm run test:integrado` | O aplicativo com login contra um PostgreSQL temporário com as migrações reais: leitura da foto da tela na hora, modo avião → sincronização sem duplicar (critério 4), operador × P&D em OP fechada (critério 5), avaliação da foto gravada no banco, liberação de usuário | PostgreSQL 15+ e Chromium |
 
 Os dois testes de navegador pedem um build antes (`npm run build`; o integrado gera o próprio). Para ter o Playwright: `npm install --no-save playwright` e `npx playwright install chromium`. `npm run test:tudo` roda tudo em sequência.
 
-O teste integrado usa uma API de teste que imita só os endereços do Supabase que o aplicativo chama. **Não substitui um teste num projeto Supabase de verdade**, que é o próximo passo depois do [passo 5](#5-configurar-e-publicar-o-aplicativo): login por e-mail, envio de fotos ao bucket e a função `ler-telas`.
+O teste integrado usa uma API de teste que imita só os endereços do Supabase que o aplicativo chama; as duas funções de IA respondem com valores fixos, sem modelo. **Não substitui um teste num projeto Supabase de verdade**, que é o próximo passo depois do [passo 5](#5-configurar-e-publicar-o-aplicativo): login por e-mail, envio de fotos ao bucket e as funções `ler-telas` e `analisar-op`.
 
 ## Pontos em aberto (seção 12 da especificação)
 
-- **Embalagens por caixa** de cada produto: começa vazio; o aplicativo sugere o valor da última OP do mesmo código e o administrador pode fixar no catálogo.
+- **Embalagens por caixa:** no peso fixo sai do peso da caixa da derivação; no PDV o operador informa (o aplicativo sugere o valor da última OP do mesmo SKU). Confirmar com o P&D os 4 SKUs em que a conta não fecha: `10256093283531-1061` (7 oz, caixa de 4 kg), `16507014073621-010` (200 g, caixa de 18,144 kg), `24616245167481-978` (150 g, caixa de 3,62 kg) e `24664020761801-032` (240 g, caixa de 4 kg).
+- **Molde a confirmar** em 27 SKUs: 6 sem molde (`0622203000134F-1058`, `0634402500133F-1058`, `0908409931213E-086`, `0908409931413E-086`, `0908409931513E-086`, `0938907200103M-815`) e 21 de filial com o molde herdado do mesmo produto. São confirmados no lançamento ou em *Administração → Produtos* (ver [Catálogo de produtos](#catálogo-de-produtos)).
+- **Regras de orientação por defeito:** texto a validar pelo P&D e, se possível, com a ULMA (ver [Orientação ao operador](#orientação-ao-operador)).
 - Espessura do filme de **tampa do molde 2x1** (0,1239 kg/m²): editável em *Administração → Filme por molde*.
 - **Molde 2x2:** não incluído.
 - Três campos das telas foram **interpretados pelos ícones** (consigna de 500 mbar na tela 414; tempo complementar e tempo máximo de vácuo na 412): confirmar com a ULMA.
@@ -234,4 +289,4 @@ O teste integrado usa uma API de teste que imita só os endereços do Supabase q
 
 ## Privacidade
 
-Este repositório guarda o catálogo de produtos e o histórico de produção da especificação (`dados/`, `supabase/seed.sql`, `supabase/instalar.sql`). Se o repositório for público, esses dados também são. No modo local eles vão embutidos no aplicativo; com o servidor configurado, não.
+Este repositório guarda o catálogo de produtos (118 SKUs, com derivação e espécie) e o histórico de produção da especificação (`dados/`, `supabase/seed.sql`, `supabase/instalar.sql`). Se o repositório for público, esses dados também são. No modo local eles vão embutidos no aplicativo; com o servidor configurado, não.

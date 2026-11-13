@@ -6,7 +6,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { BUCKET_FOTOS, CHAVES_PARAMETROS, MOTIVOS_RETRABALHO } from './constantes';
 import { SUPABASE_CHAVE, SUPABASE_URL } from './config';
 import type {
-  ChaveParametro, Foto, MoldeInfo, Op, OpLocal, Papel, Parada, Parametros, Perfil, Produto, ReceitaPadrao, Retrabalho,
+  AnaliseIa, ChaveParametro, Foto, MoldeInfo, Op, OpLocal, Papel, Parada, Parametros, Perfil, Produto, ReceitaPadrao, Retrabalho,
 } from './tipos';
 
 export type TipoErro = 'rede' | 'permissao' | 'sessao' | 'outro';
@@ -40,6 +40,9 @@ export interface LeituraTelas {
   duvidas: string;
 }
 
+/** Resposta da função analisar-op: a avaliação, sem a data e as fotos (quem guarda é o aplicativo). */
+export type RespostaAnalise = Omit<AnaliseIa, 'em' | 'fotos'>;
+
 export interface Servidor {
   salvarOp(op: OpLocal): Promise<ResultadoSalvar>;
   /** OPs gravadas no servidor depois de `desde` (ou todas). */
@@ -50,6 +53,8 @@ export interface Servidor {
   apagarFotos(caminhos: string[]): Promise<void>;
   urlFoto(caminho: string): Promise<string | null>;
   lerTelas(fotos: Blob[]): Promise<LeituraTelas>;
+  /** Avalia as fotos do produto final contra os parâmetros e o histórico (contexto). */
+  analisarOp(contexto: Record<string, unknown>, fotos: Blob[]): Promise<RespostaAnalise>;
   // administração
   salvarProdutos(produtos: Produto[]): Promise<void>;
   salvarMolde(molde: MoldeInfo): Promise<void>;
@@ -132,6 +137,7 @@ export function opDaLinha(l: Linha): Op {
     alterado_por: texto(l.alterado_por),
     alterado_em: texto(l.alterado_em),
     fechada_em: texto(l.fechada_em),
+    analise_ia: l.analise_ia && typeof l.analise_ia === 'object' ? (l.analise_ia as AnaliseIa) : null,
     retrabalho,
     paradas,
     fotos,
@@ -153,9 +159,13 @@ function produtoDaLinha(l: Linha): Produto {
   return {
     codigo: String(l.codigo),
     descricao: String(l.descricao),
-    molde: l.molde === '3x1' ? '3x1' : '2x1',
+    molde: l.molde === '3x1' || l.molde === '2x1' ? l.molde : null,
+    molde_a_confirmar: l.molde_a_confirmar === true || (l.molde !== '3x1' && l.molde !== '2x1'),
     peso_nominal_kg: numero(l.peso_nominal_kg),
     embalagens_por_caixa: numero(l.embalagens_por_caixa),
+    derivacao: texto(l.derivacao),
+    peso_caixa_kg: numero(l.peso_caixa_kg),
+    especie: texto(l.especie),
     ativo: l.ativo !== false,
   };
 }
@@ -221,6 +231,24 @@ function blobParaBase64(blob: Blob): Promise<string> {
 export function servidorSupabase(): Servidor {
   const sb = supabase();
   const urls = new Map<string, { url: string; ate: number }>();
+
+  const emBase64 = (fotos: Blob[]) =>
+    Promise.all(fotos.map(async (b) => ({ tipo: 'image/jpeg', base64: await blobParaBase64(b) })));
+
+  /** Chama uma função de borda. Quando ela responde com erro, o motivo vem em { erro: "..." }. */
+  async function chamarFuncao(nome: string, corpo: unknown): Promise<Record<string, unknown>> {
+    const { data, error } = await sb.functions.invoke(nome, { body: corpo as Record<string, unknown> });
+    if (error) {
+      const resposta = (error as { context?: unknown }).context;
+      if (resposta instanceof Response) {
+        const explicacao = ((await resposta.json().catch(() => null)) as { erro?: string } | null)?.erro;
+        if (explicacao) throw new ErroServidor('outro', explicacao);
+        throw classificar(error, resposta.status);
+      }
+      throw classificar(error);
+    }
+    return (data ?? {}) as Record<string, unknown>;
+  }
 
   return {
     async salvarOp(op) {
@@ -299,20 +327,20 @@ export function servidorSupabase(): Servidor {
     },
 
     async lerTelas(fotos) {
-      const corpo = { fotos: await Promise.all(fotos.map(async (b) => ({ tipo: 'image/jpeg', base64: await blobParaBase64(b) }))) };
-      const { data, error } = await sb.functions.invoke('ler-telas', { body: corpo });
-      if (error) {
-        // Quando a função respondeu, ela explica o motivo em { erro: "..." }.
-        const resposta = (error as { context?: unknown }).context;
-        if (resposta instanceof Response) {
-          const explicacao = ((await resposta.json().catch(() => null)) as { erro?: string } | null)?.erro;
-          if (explicacao) throw new ErroServidor('outro', explicacao);
-          throw classificar(error, resposta.status);
-        }
-        throw classificar(error);
-      }
-      const d = (data ?? {}) as Partial<LeituraTelas>;
+      const d = (await chamarFuncao('ler-telas', { fotos: await emBase64(fotos) })) as Partial<LeituraTelas>;
       return { telas: d.telas ?? [], valores: d.valores ?? {}, duvidas: d.duvidas ?? '' };
+    },
+
+    async analisarOp(contexto, fotos) {
+      const d = (await chamarFuncao('analisar-op', { contexto, fotos: await emBase64(fotos) })) as Partial<RespostaAnalise>;
+      return {
+        nota_aparencia: typeof d.nota_aparencia === 'number' ? d.nota_aparencia : null,
+        defeitos: Array.isArray(d.defeitos) ? d.defeitos : [],
+        diagnostico: d.diagnostico ?? '',
+        sugestoes: Array.isArray(d.sugestoes) ? d.sugestoes : [],
+        confianca: d.confianca === 'alta' || d.confianca === 'media' ? d.confianca : 'baixa',
+        limitacoes: d.limitacoes ?? '',
+      };
     },
 
     async salvarProdutos(produtos) {

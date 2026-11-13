@@ -28,7 +28,7 @@ const num = (v) => (v === '' || v == null ? 'null' : String(Number(v)));
 
 const produtos = csv('dados/catalogo.csv');
 const historico = csv('dados/historico.csv');
-if (produtos.length !== 91) throw new Error(`Catálogo com ${produtos.length} itens; esperado 91.`);
+if (produtos.length !== 118) throw new Error(`Catálogo com ${produtos.length} itens; esperado 118.`);
 if (historico.length !== 15) throw new Error(`Histórico com ${historico.length} linhas; esperado 15.`);
 
 const idHistorico = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -52,9 +52,22 @@ insert into public.receitas_padrao
 select '2026-01-01 00:00:00-03', 225, 110, 0.8, 1.0, 0.0, 0.0, 4.0, 0.2, 500, 40, 0.5, 10.0, 10.3
 where not exists (select 1 from public.receitas_padrao);
 
--- 6.4 Catálogo de produtos skin (${produtos.length} itens)
-insert into public.produtos (codigo, descricao, molde, peso_nominal_kg) values
-${produtos.map((p) => `  (${txt(p.codigo)}, ${txt(p.descricao)}, ${txt(p.molde)}, ${num(p.peso_nominal_kg)})`).join(',\n')}
+-- 6.4 Catálogo de produtos skin (${produtos.length} SKUs, da planilha de produtos do P&D)
+--   derivacao = DESCR_DER; peso_caixa_kg = caixa escrita na derivação (vazio = PDV);
+--   embalagens_por_caixa = peso da caixa ÷ peso nominal, quando a conta fecha;
+--   molde vazio = a planilha não traz (o operador escolhe na OP);
+--   molde_a_confirmar = molde vazio ou herdado do mesmo produto em outra origem.
+insert into public.produtos
+  (codigo, descricao, molde, molde_a_confirmar, peso_nominal_kg, embalagens_por_caixa, derivacao, peso_caixa_kg, especie)
+values
+${produtos
+  .map(
+    (p) =>
+      `  (${txt(p.codigo)}, ${txt(p.descricao)}, ${txt(p.molde)}, ${p.molde_a_confirmar === 'sim' || p.molde === '' ? 'true' : 'false'}, ` +
+      `${num(p.peso_nominal_kg)}, ${num(p.embalagens_por_caixa)}, ` +
+      `${txt(p.derivacao)}, ${num(p.peso_caixa_kg)}, ${txt(p.especie)})`,
+  )
+  .join(',\n')}
 on conflict (codigo) do nothing;
 
 -- 6.5 Histórico da planilha de controle (${historico.length} produções)

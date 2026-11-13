@@ -9,7 +9,7 @@ import { MODO_LOCAL } from '../lib/config';
 import { PARAMETROS } from '../lib/constantes';
 import { dataBR, gramas, hojeISO, normalizar, num } from '../lib/formato';
 import { avisar, useLoja, type Estado } from '../lib/loja';
-import { produtosDoCsv } from '../lib/semente';
+import { embalagensPorCaixaCalculado, pesoCaixaDaDerivacao, produtosDoCsv } from '../lib/semente';
 import type { Molde, MoldeInfo, Papel, Parametros, Perfil, Produto } from '../lib/tipos';
 
 type Secao = 'produtos' | 'filme' | 'receita' | 'usuarios';
@@ -43,18 +43,26 @@ export default function Admin() {
 
 // ------------------------------------------------------------------ produtos
 
-const PRODUTO_NOVO: Produto = { codigo: '', descricao: '', molde: '3x1', peso_nominal_kg: null, embalagens_por_caixa: null, ativo: true };
+const PRODUTO_NOVO: Produto = {
+  codigo: '', descricao: '', molde: '3x1', peso_nominal_kg: null, embalagens_por_caixa: null,
+  derivacao: null, peso_caixa_kg: null, especie: null, molde_a_confirmar: false, ativo: true,
+};
 
 function Produtos({ e }: { e: Estado }) {
   const [busca, setBusca] = useState('');
+  const [soAConfirmar, setSoAConfirmar] = useState(false);
   const [editando, setEditando] = useState<{ produto: Produto; novo: boolean } | null>(null);
   const [importar, setImportar] = useState<{ produtos: Produto[]; erros: string[]; novos: number } | null>(null);
   const [gravando, setGravando] = useState(false);
 
   const lista = useMemo(() => {
     const termos = normalizar(busca).split(/\s+/).filter(Boolean);
-    return e.produtos.filter((p) => termos.every((t) => `${p.codigo} ${normalizar(p.descricao)}`.includes(t)));
-  }, [busca, e.produtos]);
+    return e.produtos.filter(
+      (p) => (!soAConfirmar || p.molde_a_confirmar) &&
+        termos.every((t) => normalizar(`${p.codigo} ${p.descricao} ${p.derivacao ?? ''} ${p.especie ?? ''}`).includes(t)),
+    );
+  }, [busca, e.produtos, soAConfirmar]);
+  const aConfirmar = e.produtos.filter((p) => p.molde_a_confirmar).length;
 
   async function gravar(produtos: Produto[], mensagem: string): Promise<boolean> {
     setGravando(true);
@@ -69,10 +77,21 @@ function Produtos({ e }: { e: Estado }) {
     if (!arquivo) return;
     const { produtos, erros } = produtosDoCsv(await arquivo.text());
     const atuais = new Map(e.produtos.map((p) => [p.codigo, p]));
-    // O que o arquivo não traz (embalagens por caixa, ativo) fica como está no catálogo.
+    // O que o arquivo não traz fica como está no catálogo.
     const mesclados = produtos.map((p) => {
       const atual = atuais.get(p.codigo);
-      return atual ? { ...p, embalagens_por_caixa: p.embalagens_por_caixa ?? atual.embalagens_por_caixa, ativo: atual.ativo } : p;
+      return atual
+        ? {
+            ...p,
+            molde: p.molde ?? atual.molde,
+            molde_a_confirmar: p.molde ? p.molde_a_confirmar : atual.molde_a_confirmar,
+            embalagens_por_caixa: p.embalagens_por_caixa ?? atual.embalagens_por_caixa,
+            derivacao: p.derivacao ?? atual.derivacao,
+            peso_caixa_kg: p.peso_caixa_kg ?? atual.peso_caixa_kg,
+            especie: p.especie ?? atual.especie,
+            ativo: atual.ativo,
+          }
+        : p;
     });
     setImportar({ produtos: mesclados, erros, novos: mesclados.filter((p) => !atuais.has(p.codigo)).length });
   }
@@ -97,18 +116,43 @@ function Produtos({ e }: { e: Estado }) {
           <input type="file" accept=".csv,text/csv" aria-label="Importar CSV de produtos" onChange={(ev) => { void lerArquivo(ev.target.files?.[0]); ev.target.value = ''; }} />
         </span>
       </div>
+      {aConfirmar > 0 && (
+        <label className="linha">
+          <input type="checkbox" checked={soAConfirmar} onChange={(ev) => setSoAConfirmar(ev.target.checked)} />
+          só os {aConfirmar} com molde a confirmar
+        </label>
+      )}
       <p className="small muted">
-        CSV com ponto e vírgula e a primeira linha <span className="mono">codigo;descricao;molde;peso_nominal_kg;embalagens_por_caixa</span> (a última coluna é opcional).
-        Produto que já existe é atualizado; nenhum é apagado.
+        CSV com ponto e vírgula e a primeira linha{' '}
+        <span className="mono">codigo;descricao;molde;peso_nominal_kg;embalagens_por_caixa;derivacao;peso_caixa_kg;especie</span>{' '}
+        (só código e descrição são obrigatórios). O peso da caixa é lido da derivação (“CXA 7,5”) e, com o peso nominal,
+        dá as embalagens por caixa. Produto que já existe é atualizado; nenhum é apagado.
       </p>
       <div>
         {lista.map((p) => (
           <div className="linha-adm" key={p.codigo}>
             <div className="t">
               <b>{p.descricao}</b>{!p.ativo && <> <span className="chip">inativo</span></>}
+              {p.molde_a_confirmar && <> <span className="chip on">molde a confirmar</span></>}
               <div className="small muted mono">
-                {p.codigo} · {p.molde} · {p.peso_nominal_kg ? gramas(p.peso_nominal_kg) : 'peso variável'} · {p.embalagens_por_caixa ? `${p.embalagens_por_caixa} por caixa` : 'emb./caixa a definir'}
+                {p.codigo} · {p.molde ?? 'sem molde'} · {p.peso_nominal_kg ? gramas(p.peso_nominal_kg) : 'peso variável (PDV)'} ·{' '}
+                {p.embalagens_por_caixa ? `${p.embalagens_por_caixa} por caixa` : p.peso_nominal_kg ? 'emb./caixa a definir' : 'emb./caixa informada na OP'}
               </div>
+              {(p.derivacao || p.especie) && (
+                <div className="small muted">{[p.derivacao, p.especie].filter(Boolean).join(' · ')}</div>
+              )}
+              {p.molde_a_confirmar && (
+                <div className="row" style={{ marginTop: 6 }}>
+                  {(['2x1', '3x1'] as Molde[]).map((m) => (
+                    <button
+                      type="button" key={m} disabled={gravando} aria-label={`Confirmar molde ${m} para ${p.descricao} (${p.codigo})`}
+                      onClick={() => void gravar([{ ...p, molde: m, molde_a_confirmar: false }], `Molde ${m} confirmado.`)}
+                    >
+                      {p.molde === m ? `Confirmar ${m}` : `É ${m}`}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <button type="button" onClick={() => setEditando({ produto: { ...p }, novo: false })} aria-label={`Editar ${p.descricao} (${p.codigo})`}>Editar</button>
           </div>
@@ -120,20 +164,45 @@ function Produtos({ e }: { e: Estado }) {
         {ed && (
           <>
             <label>
-              Código (PROD_DER)
+              SKU (código PROD_DER)
               <input value={ed.codigo} disabled={!editando!.novo} onChange={(ev) => mudar({ codigo: ev.target.value.trim() })} placeholder="ex.: 24616701063781-975" />
             </label>
             <label>
               Descrição
               <input value={ed.descricao} onChange={(ev) => mudar({ descricao: ev.target.value })} />
             </label>
+            <label>
+              Derivação (DESCR_DER)
+              <input
+                value={ed.derivacao ?? ''} placeholder="ex.: FRESCATTO CXA 7,5 ou FRESC CXA PDV PF"
+                onChange={(ev) => {
+                  // A caixa escrita na derivação preenche o peso da caixa e, com o peso nominal, as embalagens por caixa.
+                  const derivacao = ev.target.value || null;
+                  const caixa = pesoCaixaDaDerivacao(derivacao);
+                  mudar({
+                    derivacao,
+                    peso_caixa_kg: caixa,
+                    embalagens_por_caixa: embalagensPorCaixaCalculado(caixa, ed.peso_nominal_kg) ?? ed.embalagens_por_caixa,
+                  });
+                }}
+              />
+            </label>
             <div className="grid">
               <label>
                 Molde
-                <select aria-label="Molde" value={ed.molde} onChange={(ev) => mudar({ molde: ev.target.value as Molde })}>
+                <select aria-label="Molde" value={ed.molde ?? ''} onChange={(ev) => mudar({ molde: (ev.target.value || null) as Molde | null })}>
+                  <option value="">a confirmar</option>
                   <option value="2x1">2x1</option>
                   <option value="3x1">3x1</option>
                 </select>
+              </label>
+              <label>
+                Espécie (agrupamento)
+                <input value={ed.especie ?? ''} onChange={(ev) => mudar({ especie: ev.target.value || null })} placeholder="ex.: SALMON" />
+              </label>
+              <label htmlFor="ad-pc">
+                Peso da caixa (kg)
+                <CampoNumero id="ad-pc" valor={ed.peso_caixa_kg} aoMudar={(v) => mudar({ peso_caixa_kg: v || null })} min={0} max={100} placeholder="vazio = variável (PDV)" />
               </label>
               <label htmlFor="ad-pn">
                 Peso nominal (kg)
@@ -154,7 +223,12 @@ function Produtos({ e }: { e: Estado }) {
                 onClick={async () => {
                   if (!ed.codigo || !ed.descricao.trim()) { avisar('Informe código e descrição.', 'erro'); return; }
                   if (editando!.novo && e.produtos.some((p) => p.codigo === ed.codigo)) { avisar('Já existe um produto com este código.', 'erro'); return; }
-                  if (await gravar([{ ...ed, descricao: ed.descricao.trim() }], 'Produto salvo.')) setEditando(null);
+                  // Salvar aqui com o molde escolhido confirma o molde.
+                  const produto = {
+                    ...ed, descricao: ed.descricao.trim(), derivacao: ed.derivacao?.trim() || null, especie: ed.especie?.trim() || null,
+                    molde_a_confirmar: ed.molde == null,
+                  };
+                  if (await gravar([produto], 'Produto salvo.')) setEditando(null);
                 }}
               >
                 {gravando ? 'Salvando…' : 'Salvar'}

@@ -121,7 +121,10 @@ select
        then d.peso_final_kg / nullif(d.embalagens_boas, 0) / d.peso_nominal_kg - 1 end as sobrepeso,
   d.receita_id,
   d.parametros_alterados,
-  d.fotos
+  d.fotos,
+  -- Nota de aparência (0 a 10) da última avaliação da foto do produto pela IA.
+  case when jsonb_typeof(d.analise_ia -> 'nota_aparencia') = 'number'
+       then (d.analise_ia ->> 'nota_aparencia')::numeric end as nota_aparencia_ia
 from destino d;
 
 revoke all on public.ops_indicadores from anon, authenticated;

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { BarraDestino, Dialogo, LegendaDestino } from '../componentes/Basicos';
+import { CartaoAnaliseIa } from '../componentes/AnaliseIa';
 import { Fotos } from '../componentes/Fotos';
 import { calcular, parametrosAlterados, parametrosDaReceita, receitaVigente, temParametros, type Indicadores } from '../lib/calc';
 import { MOTIVOS_RETRABALHO, PARAMETROS } from '../lib/constantes';
@@ -150,6 +151,12 @@ export function DetalheOp({ op, e, aoFechar, abrirNoLancamento, aoComparar }: De
         </div>
       )}
 
+      {op.analise_ia && (
+        <div>
+          <div className="eyebrow">Foto do produto avaliada por IA</div>
+          <CartaoAnaliseIa analise={op.analise_ia} />
+        </div>
+      )}
       {op.observacoes && (
         <div>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Observações</div>

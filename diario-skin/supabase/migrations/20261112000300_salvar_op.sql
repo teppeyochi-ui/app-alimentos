@@ -57,7 +57,7 @@ begin
     passo_inicio, passo_fim, caixas, embalagens_avulsas, peso_final_kg,
     aparencia, observacoes,
     t_dome, t_pre, t1, t2, t4, t5, t6, t7, p_vent, sp, tx, tmax, parametros_origem,
-    criado_em, alterado_em, fechada_em
+    criado_em, alterado_em, fechada_em, analise_ia
   ) values (
     v_id, coalesce(n.origem, 'diario'), 'aberta', n.data, n.produto_codigo,
     coalesce(trim(n.produto_descricao), ''), n.op, n.molde,
@@ -66,7 +66,8 @@ begin
     n.passo_inicio, n.passo_fim, n.caixas, coalesce(n.embalagens_avulsas, 0), n.peso_final_kg,
     n.aparencia, n.observacoes,
     n.t_dome, n.t_pre, n.t1, n.t2, n.t4, n.t5, n.t6, n.t7, n.p_vent, n.sp, n.tx, n.tmax, n.parametros_origem,
-    n.criado_em, v_alterado, n.fechada_em
+    n.criado_em, v_alterado, n.fechada_em,
+    case when jsonb_typeof(n.analise_ia) = 'object' then n.analise_ia end
   )
   on conflict (id) do update set
     status = 'aberta',
@@ -97,7 +98,8 @@ begin
     sp = excluded.sp, tx = excluded.tx, tmax = excluded.tmax,
     parametros_origem = excluded.parametros_origem,
     alterado_em = excluded.alterado_em,
-    fechada_em = excluded.fechada_em;
+    fechada_em = excluded.fechada_em,
+    analise_ia = excluded.analise_ia;
 
   -- 2) Retrabalho: uma linha por motivo, com a contagem do aparelho.
   if jsonb_typeof(p -> 'retrabalho') = 'object' then

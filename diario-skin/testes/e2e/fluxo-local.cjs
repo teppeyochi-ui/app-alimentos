@@ -43,7 +43,7 @@ const {
   }
   async function escolherProduto(busca) {
     await p.getByRole('button', { name: /^Produto/ }).click();
-    await p.getByLabel('Buscar por código ou nome').fill(busca);
+    await p.getByLabel('Buscar por SKU, nome ou derivação').fill(busca);
     await p.locator('.lista-produtos button').first().click();
   }
 
@@ -57,17 +57,55 @@ const {
   await escolherProduto('16507014073621-011');
   verificar((await campo('Molde').inputValue()) === '3x1', 'molde 3x1');
   verificar((await campo('Peso nominal (kg)').inputValue()) === '0,2', 'peso nominal 0,2 kg');
-  verificar((await p.getByText(/^Do catálogo:/).innerText()).includes('molde 3x1 (3 bandejas por passo) · peso nominal 200 g'), 'linha de confirmação do catálogo');
+  const doCatalogo = await p.getByText(/^Do catálogo:/).innerText();
+  verificar(doCatalogo.includes('SKU 16507014073621-011') && doCatalogo.includes('peso nominal 200 g') && doCatalogo.includes('molde 3x1 (3 bandejas por passo)'), 'linha de confirmação do catálogo');
+  verificar(doCatalogo.includes('derivação FRESCATTO CXA 05') && doCatalogo.includes('caixa de 5 kg'), 'derivação e peso da caixa vêm da planilha de produtos');
+  verificar((await campo('Embalagens por caixa').inputValue()) === '25', 'peso fixo: embalagens por caixa calculado (5 kg ÷ 200 g = 25)');
   await captura('1-identificacao');
   await conferirLayout('Lançar OP');
+
+  console.log('Produto de peso variável (PDV): embalagens por caixa é do operador');
+  await escolherProduto('06042002001341-1058');
+  // Os campos numéricos acompanham a OP logo depois da escolha: espera o valor chegar.
+  const esvaziou = (id) => p.waitForFunction((i) => document.getElementById(i)?.value === '', id, { timeout: 3000 }).then(() => true, () => false);
+  verificar(await esvaziou('f-pn'), 'PDV: sem peso nominal');
+  verificar(await esvaziou('f-epc'), 'PDV: embalagens por caixa vazio');
+  verificar(await p.getByText('Produto de peso variável (PDV): informe quantas embalagens vão em cada caixa.').count() === 1, 'PDV: pede as embalagens por caixa');
+  await campo('Embalagens por caixa').fill('12');
+  verificar(await p.getByText('Produto de peso variável (PDV): informe quantas embalagens vão em cada caixa.').count() === 0, 'PDV: aviso some depois de informar');
+  await p.getByRole('button', { name: /^Produto/ }).click();
+  await p.getByLabel('Buscar por SKU, nome ou derivação').fill('CXA 7,5 PESCADA');
+  verificar(await p.locator('.lista-produtos button').count() >= 2, 'busca por derivação acha a pescada da caixa de 7,5 kg');
+  await p.locator('dialog[open]').getByRole('button', { name: 'Fechar' }).click();
+
+  console.log('Molde a confirmar: o operador escolhe e a escolha fica no catálogo');
+  await escolherProduto('2461670106378F-975'); // molde 2x1 herdado do mesmo produto
+  verificar(await p.getByText('O molde 2x1 deste SKU foi copiado do mesmo produto em outra origem. Confirme ou corrija:').count() === 1, 'SKU com molde herdado pede confirmação');
+  await conferirLayout('Confirmação de molde');
+  await p.getByRole('button', { name: '3x1 (3 bandejas)', exact: true }).click();
+  await p.getByText('Molde 3x1 gravado no catálogo para este SKU.').waitFor();
+  verificar((await campo('Molde').inputValue()) === '3x1', 'molde corrigido para 3x1 na OP');
+  verificar(await p.getByText(/Confirme ou corrija/).count() === 0, 'depois de confirmado, não pergunta de novo');
+  verificar((await p.getByText(/^Do catálogo:/).innerText()).includes('molde 3x1 (3 bandejas por passo)') && !(await p.getByText(/^Do catálogo:/).innerText()).includes('a confirmar'), 'catálogo passou a dizer 3x1, confirmado');
+  await escolherProduto('0938907200103M-815'); // sem molde na planilha
+  verificar(await p.getByText('A planilha de produtos não traz o molde deste SKU. Escolha:').count() === 1, 'SKU sem molde pede a escolha');
+  await p.getByRole('button', { name: '2x1 (2 bandejas)', exact: true }).click();
+  await p.getByText('Molde 2x1 gravado no catálogo para este SKU.').waitFor();
+  verificar((await campo('Molde').inputValue()) === '2x1', 'molde escolhido: 2x1');
+  // Produto com molde da planilha: trocar o molde na OP oferece corrigir o catálogo.
+  await escolherProduto('16507014073621-011');
+  await campo('Molde').selectOption('2x1');
+  verificar(await p.getByText('O catálogo diz molde 3x1, mas esta OP está com 2x1.').count() === 1, 'molde diferente do catálogo: avisa');
+  await p.getByRole('button', { name: 'Voltar para 3x1' }).click();
+  verificar((await campo('Molde').inputValue()) === '3x1' && await p.getByText(/O catálogo diz molde/).count() === 0, 'volta para o molde do catálogo');
 
   console.log('Critério 4: lançar sem internet (modo avião)');
   await ctx.setOffline(true);
   await p.getByRole('button', { name: 'Nova OP' }).click();
   await escolherProduto('24616701063781-975');
   verificar((await campo('Molde').inputValue()) === '2x1', 'salmão 600 g: molde 2x1');
+  verificar((await campo('Embalagens por caixa').inputValue()) === '15', 'salmão 600 g: caixa de 9 kg = 15 embalagens');
   await campo('OP').fill('20109999');
-  await campo('Embalagens por caixa').fill('9');
   await campo('Hora de início').fill('08:00');
   await campo('Temp. do produto (°C)').fill('18');
   await p.getByRole('button', { name: 'Trocar o sinal da temperatura' }).click();
@@ -96,7 +134,7 @@ const {
 
   await campo('Hora de fim').fill('10:30');
   await campo('Passo no fim').fill('600');
-  await campo('Caixas de produto acabado').fill('110');
+  await campo('Caixas de produto acabado').fill('66'); // 66 caixas × 15 = 990 embalagens
   await campo('Peso final (kg)').fill('620');
   await p.getByRole('button', { name: 'Boa', exact: true }).click();
   await p.getByLabel('Adicionar foto do produto final').setInputFiles([await fotoDeTeste(p, 'produto')]);
@@ -120,7 +158,7 @@ const {
   await p.waitForFunction(() => document.querySelector('.actions .stat')?.textContent.includes('Salvo no aparelho'));
   await p.reload();
   await p.getByRole('heading', { name: 'Resultado desta OP' }).waitFor();
-  verificar((await campo('Caixas de produto acabado').inputValue()) === '110', 'reabrir sem internet: a OP continua com os dados');
+  verificar((await campo('Caixas de produto acabado').inputValue()) === '66', 'reabrir sem internet: a OP continua com os dados');
   verificar((await indicador('Retrabalho')).includes('7'), 'reabrir sem internet: contagem de retrabalho mantida');
   verificar(await p.locator('.ph img').count() === 3, 'reabrir sem internet: as 3 fotos continuam no aparelho');
 
@@ -128,7 +166,7 @@ const {
   await campo('Caixas de produto acabado').fill('140');
   await p.getByRole('button', { name: 'Encerrar OP' }).click();
   verificar(await p.getByText('Boas + retrabalho passam das bandejas formadas. Confira passos e caixas.').count() === 1, 'bloqueia quando boas + retrabalho passam de 102% das formadas');
-  await campo('Caixas de produto acabado').fill('110');
+  await campo('Caixas de produto acabado').fill('66'); // 66 caixas × 15 = 990 embalagens
   await p.getByRole('button', { name: 'Encerrar OP' }).click();
   await p.getByRole('heading', { name: 'Encerrar esta OP?' }).waitFor();
   await conferirLayout('Diálogo de encerramento');
@@ -188,6 +226,33 @@ const {
     await p.getByRole('button', { name: secao }).click();
     await conferirLayout('Administração: ' + secao.toLowerCase());
   }
+
+  console.log('Orientação: a configuração está boa?');
+  await p.goto(base + '#lancar');
+  await p.getByRole('button', { name: 'Nova OP' }).click();
+  await escolherProduto('24616701063781-975');
+  for (let i = 0; i < 4; i++) await p.getByRole('button', { name: 'Mais um: Sem vácuo' }).tap();
+  await p.getByRole('button', { name: 'Mais um: Rugas ou ar preso' }).tap();
+  await p.getByRole('link', { name: /Ver orientação/ }).click();
+  await p.getByRole('heading', { name: 'Configuração × referência' }).waitFor();
+  const orientacao = (await p.locator('main').innerText()).replace(/\s+/g, ' ');
+  verificar(orientacao.includes('a melhor de 1 OP encerrada deste produto'), 'referência: a OP encerrada do mesmo produto');
+  verificar(orientacao.includes('1 parâmetro diferente da faixa das melhores OPs: T2'), 'aponta o T2 fora da faixa da melhor OP');
+  verificar(orientacao.includes('melhores usaram 1,2 s'), 'mostra o valor usado na melhor OP (T2 = 1,2 s)');
+  verificar(orientacao.includes('Melhor resultado já registrado deste produto: 82,5%'), 'mostra o melhor aproveitamento registrado');
+  verificar(/Sem vácuo 4 emb\./.test(orientacao) && orientacao.indexOf('Sem vácuo 4 emb.') < orientacao.indexOf('Rugas ou ar preso 1 emb.'), 'defeitos do mais frequente para o menos');
+  verificar(orientacao.includes('Diminuir Consigna vácuo (agora 40 mbar'), 'regra do defeito cita o parâmetro e o valor atual');
+  verificar(orientacao.includes('A avaliação por IA só funciona com o servidor ligado'), 'modo local: avisa que a IA precisa do servidor');
+  await p.locator('.aviso').first().waitFor({ state: 'detached', timeout: 8000 }).catch(() => {});
+  await captura('9-orientacao');
+  await p.locator('#t-cfg').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await captura('9b-orientacao-configuracao');
+  await p.locator('#t-def').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await captura('10-orientacao-defeitos');
+  await conferirLayout('Orientação');
+  await p.getByRole('link', { name: 'Orientação', exact: true }).click();
+  await p.getByRole('heading', { name: 'Configuração × referência' }).waitFor();
+  verificar((await p.getByLabel('OP', { exact: true }).locator('option:checked').innerText()).includes('em andamento'), 'a aba Orientação abre na OP que estava no lançamento');
 
   console.log('Operador × OP fechada (o aplicativo espelha as políticas do banco)');
   // No modo local o usuário é administrador; a regra do operador é coberta pelos testes de unidade e do banco.

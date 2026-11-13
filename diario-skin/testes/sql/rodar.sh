@@ -46,7 +46,7 @@ fi
 # A carga pode ser repetida: não duplica nem desfaz o que foi corrigido.
 "${SQL[@]}" -f "$RAIZ/supabase/seed.sql"
 FINAL=$("${SQL[@]}" -At <<'FIM'
-select case when (select count(*) from public.produtos) = 92 then '✓' else '✗' end || ' produtos continuam 92 (91 + 1 incluído no teste)';
+select case when (select count(*) from public.produtos) = 119 then '✓' else '✗' end || ' produtos continuam 119 (118 + 1 incluído no teste)';
 select case when (select count(*) from public.ops where origem = 'planilha') = 15 then '✓' else '✗' end || ' histórico continua com 15';
 select case when (select count(*) from public.receitas_padrao) = 2 then '✓' else '✗' end || ' receitas continuam 2';
 select case when (select molde from public.ops where id = '00000000-0000-4000-8000-000000000009') = '3x1' then '✓' else '✗' end || ' correção do P&D no histórico foi mantida';

@@ -95,7 +95,7 @@ const ORDEM = { produtos: 'codigo', moldes: 'molde', receitas_padrao: 'vigente_d
 
 /** API que imita o Supabase na frente do banco. Devolve o servidor HTTP e contadores de chamadas. */
 function subirApi(banco, porta) {
-  const chamadas = { salvar_op: 0, fotos: 0, baixar_ops: 0 };
+  const chamadas = { salvar_op: 0, fotos: 0, baixar_ops: 0, ler_telas: 0, analisar_op: 0, ultimaAnalise: null };
   // Com a rede "cortada", toda conexão é derrubada sem resposta (como sinal que cai).
   let cortada = false;
   const ler = (req) => new Promise((ok) => { const partes = []; req.on('data', (d) => partes.push(d)); req.on('end', () => ok(Buffer.concat(partes))); });
@@ -126,6 +126,12 @@ function subirApi(banco, porta) {
       return u ? responder(200, sessao(u)) : responder(400, { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' });
     }
     if (caminho === '/auth/v1/logout') return responder(204);
+
+    // Endereço assinado de foto: abre sem login, como no Supabase (o token vai no próprio endereço).
+    if (req.method === 'GET' && /^\/storage\/v1\/object\/sign\/fotos-op\//.test(caminho) && q.get('token')) {
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Access-Control-Allow-Origin': '*' });
+      return res.end(Buffer.from('foto-de-teste'));
+    }
 
     const u = usuarioDoToken(req.headers.authorization);
     if (caminho === '/auth/v1/user') return u ? responder(200, usuarioAuth(u)) : responder(401, { msg: 'sem sessão' });
@@ -168,6 +174,25 @@ function subirApi(banco, porta) {
       const d = JSON.parse(texto());
       const saida = comoUsuario(`update public.perfis set nome = ${lit(d.nome)}, papel = ${lit(d.papel)}, ativo = ${d.ativo === true} where id = ${lit(q.get('id').replace(/^eq\./, ''))}`);
       return saida === null ? undefined : responder(204);
+    }
+
+    // ---------------------------------------------------------------- funções de IA (respostas fixas, sem modelo)
+    if (caminho === '/functions/v1/ler-telas' && req.method === 'POST') {
+      chamadas.ler_telas++;
+      const fotos = JSON.parse(texto()).fotos ?? [];
+      return responder(200, { telas: fotos.map(() => 417), valores: { t_dome: 225, t_pre: 110, sp: 40 }, duvidas: '' });
+    }
+    if (caminho === '/functions/v1/analisar-op' && req.method === 'POST') {
+      chamadas.analisar_op++;
+      chamadas.ultimaAnalise = JSON.parse(texto());
+      return responder(200, {
+        nota_aparencia: 7.5,
+        defeitos: [{ tipo: 'ruga', gravidade: 'leve', descricao: 'ruga pequena no canto inferior' }],
+        diagnostico: 'Filme bem aderido ao produto, com uma ruga leve num canto.',
+        sugestoes: [{ parametro: 't2', acao: 'aumentar', valor_sugerido: 1.2, motivo: 'mais tempo de aquecimento ajuda o filme a moldar o canto' }],
+        confianca: 'media',
+        limitacoes: '',
+      });
     }
 
     // ---------------------------------------------------------------- fotos

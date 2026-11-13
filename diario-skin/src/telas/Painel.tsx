@@ -17,7 +17,7 @@ import type { ChaveParametro, OpLocal } from '../lib/tipos';
 import { CompararOps, DetalheOp, tituloOp } from './DetalheOp';
 
 type EixoX = ChaveParametro | 'temp_produto_c';
-type EixoY = 'aproveitamento' | 'retrabalho_pct' | 'vazias_pct' | 'produtividade_kg_h' | 'ciclos_por_minuto' | 'sobrepeso';
+type EixoY = 'aproveitamento' | 'retrabalho_pct' | 'vazias_pct' | 'produtividade_kg_h' | 'ciclos_por_minuto' | 'sobrepeso' | 'nota_ia';
 
 const EIXOS_Y: { chave: EixoY; nome: string; percentual: boolean; casas: number }[] = [
   { chave: 'aproveitamento', nome: 'Aproveitamento de bandejas (%)', percentual: true, casas: 1 },
@@ -26,6 +26,7 @@ const EIXOS_Y: { chave: EixoY; nome: string; percentual: boolean; casas: number 
   { chave: 'produtividade_kg_h', nome: 'Produtividade (kg/h)', percentual: false, casas: 0 },
   { chave: 'ciclos_por_minuto', nome: 'Ciclos por minuto', percentual: false, casas: 1 },
   { chave: 'sobrepeso', nome: 'Sobrepeso (%)', percentual: true, casas: 1 },
+  { chave: 'nota_ia', nome: 'Nota de aparência da foto (IA, 0 a 10)', percentual: false, casas: 1 },
 ];
 
 const MAX_BARRAS = 40;
@@ -86,6 +87,7 @@ export default function Painel({ abrirNoLancamento }: { abrirNoLancamento: (id: 
   const comTempo = linhas.filter((l) => l.c.horas && l.o.peso_final_kg);
   const horas = soma(comTempo, (l) => l.c.horas);
   const doDiario = linhas.filter((l) => l.o.origem !== 'planilha').length;
+  const emAndamento = linhas.filter((l) => l.o.status === 'aberta').length;
 
   // ---------------------------------------------------------------- motivos
   const pareto: [string, number][] = MOTIVOS_RETRABALHO
@@ -102,7 +104,7 @@ export default function Painel({ abrirNoLancamento }: { abrirNoLancamento: (id: 
   const casasX = eixoX === 'temp_produto_c' ? 1 : META_PARAMETRO[eixoX].casas;
   const pontos: Ponto[] = linhas.flatMap((l) => {
     const x = l.o[eixoX];
-    const y = l.c[eixoY];
+    const y = eixoY === 'nota_ia' ? l.o.analise_ia?.nota_aparencia ?? null : l.c[eixoY];
     return x != null && y != null && Number.isFinite(y)
       ? [{ id: l.o.id, x, y, produto: l.o.produto_descricao, rotulo: `${dataBR(l.o.data)} · ${tituloOp(l.o)}` }]
       : [];
@@ -135,7 +137,7 @@ export default function Painel({ abrirNoLancamento }: { abrirNoLancamento: (id: 
   };
 
   async function exportar(formato: 'csv' | 'xlsx') {
-    const dados = { ops: linhas.map((l) => l.o), moldes: e.moldes, receitas: e.receitas, perfis: e.perfis };
+    const dados = { ops: linhas.map((l) => l.o), moldes: e.moldes, receitas: e.receitas, perfis: e.perfis, produtos: e.produtos };
     setExportando(true);
     try {
       if (formato === 'csv') exportarCsv(dados);
@@ -178,7 +180,7 @@ export default function Painel({ abrirNoLancamento }: { abrirNoLancamento: (id: 
         </div>
         {linhas.length > 0 && (
           <div className="kpis">
-            <Kpi rotulo="OPs" valor={num(linhas.length)} sub={`${num(doDiario)} lançadas no diário`} />
+            <Kpi rotulo="OPs" valor={num(linhas.length)} sub={`${num(doDiario)} do diário · ${num(emAndamento)} em andamento`} />
             <Kpi rotulo="Bandejas formadas" valor={num(formadas)} sub={`${num(boas)} embalagens boas`} />
             <Kpi rotulo="Aproveitamento" valor={pct(aproveitamento)} sub={aproveitamento != null ? <Farol aproveitamento={aproveitamento} /> : 'ponderado pelas bandejas'} />
             <Kpi rotulo="Retrabalho" valor={formadasClass ? pct(soma(classificadas, (l) => l.c.retrabalho) / formadasClass) : '—'} sub="das bandejas · OPs do diário" />

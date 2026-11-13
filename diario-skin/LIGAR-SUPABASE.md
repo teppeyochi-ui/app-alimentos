@@ -121,6 +121,24 @@ Esta etapa é mais técnica e pode ficar para depois. Ela liga duas coisas:
 
 Precisa de uma chave da Anthropic, criada em https://platform.claude.com, e de publicar duas funções no Supabase (`ler-telas` e `analisar-op`). O passo a passo está no [README, passo 6](README.md#6-leitura-das-fotos-por-ia-opcional). Cada leitura custa da ordem de centavos de dólar.
 
+## Se aparecer `relation "perfis" already exists` na etapa 2
+
+O banco já tinha sido criado antes. Nada foi estragado. Para saber em que versão ele está, abra uma consulta nova no **SQL Editor** (botão **+** → **Create a new snippet**), cole o texto abaixo e clique em **Run**:
+
+```sql
+select
+  to_regclass('public.perfis') is not null as banco_criado,
+  (select count(*) from information_schema.columns
+    where table_schema = 'public' and table_name = 'produtos'
+      and column_name = 'molde_a_confirmar') = 1 as versao_nova;
+```
+
+| banco_criado | versao_nova | O que fazer |
+|---|---|---|
+| true | true | O banco está pronto. Siga para a etapa 3 |
+| true | false | O banco é da primeira versão. Abra o [arquivo de atualização](https://github.com/teppeyochi-ui/app-alimentos/blob/main/diario-skin/supabase/atualizar.sql), copie com **Copy raw file**, cole numa consulta nova e clique em **Run**. Ele não apaga nada. No fim deve aparecer `118` e `true` |
+| false | false | O arquivo foi colado duas vezes. Apague o editor, cole **uma vez só** e rode de novo |
+
 ## Se algo der errado
 
 Anote em qual etapa parou e o que apareceu na tela. Com isso dá para achar o problema.

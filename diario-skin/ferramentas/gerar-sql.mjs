@@ -102,3 +102,57 @@ const instalar =
   `\n-- ==================== seed.sql ====================\n\n${s}`;
 writeFileSync(join(raiz, 'supabase/instalar.sql'), instalar);
 console.log('supabase/instalar.sql');
+
+// ---------------------------------------------------------------------------
+// atualizar.sql: leva um banco criado com a PRIMEIRA versão do instalar.sql
+// (catálogo de 91 produtos, sem derivação) para a versão atual, sem apagar nada.
+// Pode ser rodado mais de uma vez e também num banco já atualizado.
+const valoresProdutos = produtos
+  .map(
+    (p) =>
+      `  (${txt(p.codigo)}, ${txt(p.descricao)}, ${txt(p.molde)}, ${p.molde_a_confirmar === 'sim' || p.molde === '' ? 'true' : 'false'}, ` +
+      `${num(p.peso_nominal_kg)}, ${num(p.embalagens_por_caixa)}, ${txt(p.derivacao)}, ${num(p.peso_caixa_kg)}, ${txt(p.especie)})`,
+  )
+  .join(',\n');
+const atualizar = `-- Diário da Linha Skin — atualização do banco criado com a primeira versão.
+-- Gerado por ferramentas/gerar-sql.mjs.
+-- Uso: Supabase → SQL Editor → colar tudo → Run.
+-- Não apaga nada: acrescenta colunas, troca a função de gravação e a view, e
+-- completa o catálogo. Pode ser rodado mais de uma vez.
+
+-- 1) Catálogo: derivação, peso da caixa, espécie e molde a confirmar
+alter table public.produtos alter column molde drop not null;
+alter table public.produtos add column if not exists molde_a_confirmar boolean not null default false;
+alter table public.produtos add column if not exists derivacao text;
+alter table public.produtos add column if not exists peso_caixa_kg numeric check (peso_caixa_kg > 0);
+alter table public.produtos add column if not exists especie text;
+
+-- 2) OP: avaliação da foto do produto pela IA
+alter table public.ops add column if not exists analise_ia jsonb;
+
+-- 3) Função de gravação e view de indicadores (versões atuais)
+${ler('supabase/migrations/20261112000300_salvar_op.sql')}
+${ler('supabase/migrations/20261112000400_indicadores.sql')}
+-- 4) Catálogo da planilha de produtos (${produtos.length} SKUs). Produto novo entra; no que já
+--    existia, entram derivação, caixa e espécie. Molde e embalagens por caixa
+--    que já estavam preenchidos no banco são mantidos.
+insert into public.produtos as p
+  (codigo, descricao, molde, molde_a_confirmar, peso_nominal_kg, embalagens_por_caixa, derivacao, peso_caixa_kg, especie)
+values
+${valoresProdutos}
+on conflict (codigo) do update set
+  derivacao = excluded.derivacao,
+  peso_caixa_kg = excluded.peso_caixa_kg,
+  especie = excluded.especie,
+  molde = coalesce(p.molde, excluded.molde),
+  molde_a_confirmar = case when p.derivacao is null then excluded.molde_a_confirmar else p.molde_a_confirmar end,
+  embalagens_por_caixa = coalesce(p.embalagens_por_caixa, excluded.embalagens_por_caixa);
+
+-- Conferência: deve mostrar 118 (ou mais, se já houver produtos incluídos à mão) e true.
+select
+  (select count(*) from public.produtos) as produtos,
+  (select count(*) from information_schema.columns
+    where table_schema = 'public' and table_name = 'produtos' and column_name = 'molde_a_confirmar') = 1 as versao_nova;
+`;
+writeFileSync(join(raiz, 'supabase/atualizar.sql'), atualizar);
+console.log('supabase/atualizar.sql');

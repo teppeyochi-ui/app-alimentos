@@ -42,7 +42,7 @@ O workflow `.github/workflows/pages-classificador.yml` publica o Diário junto c
 - Classificador: `https://teppeyochi-ui.github.io/app-alimentos/`
 - Diário da Linha Skin: `https://teppeyochi-ui.github.io/app-alimentos/diario-skin/`
 
-Sem configuração, o Diário é publicado em **modo local**. Para o celular: abra o endereço, instale (ver [passo 7](#7-instalar-no-celular)) e use.
+O Diário publicado está **ligado ao Supabase**: o endereço do projeto e a chave pública ficam no próprio workflow (são valores públicos). Para o celular: abra o endereço, entre com sua conta, instale (ver [passo 7](#7-instalar-no-celular)) e use.
 
 ### Como os dados ficam gravados no modo local
 
@@ -54,7 +54,7 @@ Sem configuração, o Diário é publicado em **modo local**. Para o celular: ab
 
 ### Ligar o Pages ao Supabase
 
-Depois dos passos 1 a 4 abaixo, crie duas variáveis no GitHub, em *Settings → Secrets and variables → Actions → Variables*: `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (a chave pública, nunca a *service_role*). Depois rode o workflow de novo (aba *Actions → Run workflow*) e informe o endereço do Diário no Supabase ([passo 3](#3-configurar-o-login)).
+O workflow já traz o endereço e a chave pública do projeto. Para apontar para outro projeto, crie duas variáveis no GitHub, em *Settings → Secrets and variables → Actions → Variables*: `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (a chave pública, nunca a *service_role*); elas têm prioridade sobre o que está no workflow. Depois rode o workflow de novo (aba *Actions → Run workflow*) e informe o endereço do Diário no Supabase ([passo 3](#3-configurar-o-login)).
 
 ## Colocar no ar, passo a passo
 
@@ -73,6 +73,8 @@ Os nomes dos menus do Supabase mudam de vez em quando; se algum não bater, proc
 2. Cole todo o conteúdo de [`supabase/instalar.sql`](supabase/instalar.sql) e clique em **Run**.
 
 Esse arquivo cria as tabelas, as permissões, a função de gravação, a view `ops_indicadores`, o bucket de fotos `fotos-op` e carrega os moldes, a receita padrão, os 118 SKUs do catálogo e as 15 produções do histórico. Rode **uma vez**, num projeto novo.
+
+Banco criado com a primeira versão deste arquivo (catálogo de 91 produtos)? Rode [`supabase/atualizar.sql`](supabase/atualizar.sql) no mesmo SQL Editor: acrescenta as colunas novas, troca a função e a view e completa o catálogo, sem apagar nada.
 
 Quem preferir a linha de comando do Supabase pode usar os arquivos separados: `supabase/migrations/*.sql` (na ordem) e depois `supabase/seed.sql`.
 
@@ -255,13 +257,14 @@ diario-skin/
 │  ├─ migrations/    tabelas, permissões, salvar_op, view, bucket de fotos
 │  ├─ functions/     ler-telas (lê as fotos das telas) e analisar-op (avalia a foto do produto)
 │  ├─ seed.sql       carga inicial (gerada)
-│  └─ instalar.sql   tudo acima num arquivo só (gerado)
+│  ├─ instalar.sql   tudo acima num arquivo só (gerado)
+│  └─ atualizar.sql  leva um banco da primeira versão para a atual (gerado)
 ├─ dados/            catalogo.csv e historico.csv (origem da carga inicial)
 ├─ ferramentas/      geradores do SQL e dos ícones
 └─ testes/           unidade, banco e navegador
 ```
 
-Depois de alterar um CSV de `dados/` ou uma migração, rode `npm run sql` para gerar de novo `seed.sql` e `instalar.sql`.
+Depois de alterar um CSV de `dados/` ou uma migração, rode `npm run sql` para gerar de novo `seed.sql`, `instalar.sql` e `atualizar.sql`.
 
 ## Testes
 

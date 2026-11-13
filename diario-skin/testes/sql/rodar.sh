@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Testa as migrações, a carga inicial e as políticas de acesso num PostgreSQL
 # temporário (não toca em nenhum banco existente).
-#   bash testes/sql/rodar.sh
+#   bash testes/sql/rodar.sh                 migrações + carga
+#   bash testes/sql/rodar.sh --instalador    supabase/instalar.sql
+#   bash testes/sql/rodar.sh --atualizacao   instalador da primeira versão + supabase/atualizar.sql
 # Precisa do PostgreSQL 15+ instalado (initdb, pg_ctl, psql).
 set -euo pipefail
 
@@ -36,6 +38,14 @@ echo "Preparando o banco (migrações + carga inicial)"
 if [ "${1:-}" = "--instalador" ]; then
   # Testa o arquivo único que o README manda colar no SQL Editor.
   "${SQL[@]}" -f "$RAIZ/supabase/instalar.sql"
+elif [ "${1:-}" = "--atualizacao" ]; then
+  # Banco criado com a primeira versão do instalador (commit ae82a46) e depois
+  # atualizado com supabase/atualizar.sql, rodado duas vezes.
+  git -C "$RAIZ" show ae82a46:diario-skin/supabase/instalar.sql > "$TMP/instalar-v1.sql"
+  chmod a+r "$TMP/instalar-v1.sql"
+  "${SQL[@]}" -f "$TMP/instalar-v1.sql"
+  "${SQL[@]}" -f "$RAIZ/supabase/atualizar.sql" >/dev/null
+  "${SQL[@]}" -f "$RAIZ/supabase/atualizar.sql" >/dev/null
 else
   for f in "$RAIZ"/supabase/migrations/*.sql; do "${SQL[@]}" -f "$f"; done
   "${SQL[@]}" -f "$RAIZ/supabase/seed.sql"

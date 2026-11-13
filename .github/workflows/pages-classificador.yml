@@ -1,6 +1,7 @@
 # Publica os aplicativos no GitHub Pages.
 #   https://teppeyochi-ui.github.io/app-alimentos/              → Classificador de Camarão
 #   https://teppeyochi-ui.github.io/app-alimentos/diario-skin/  → Diário da Linha Skin
+#   https://teppeyochi-ui.github.io/app-alimentos/ditado-voz/   → Dita (ditado por voz)
 # Configuração única: Settings → Pages → Build and deployment → Source: "GitHub Actions".
 #
 # Diário da Linha Skin: ligado ao projeto Supabase indicado no passo "Diário — build".
@@ -19,6 +20,7 @@ on:
     paths:
       - 'classificador-camarao/**'
       - 'diario-skin/**'
+      - 'ditado-voz/**'
       - '.github/workflows/pages-classificador.yml'
   workflow_dispatch:
 
@@ -51,6 +53,10 @@ jobs:
         working-directory: classificador-camarao
         run: node teste-motor.js
 
+      - name: Dita — testes do núcleo
+        working-directory: ditado-voz
+        run: node teste-nucleo.js
+
       - name: Diário — dependências
         working-directory: diario-skin
         run: npm ci
@@ -76,6 +82,11 @@ jobs:
           cp -r icones ../_site/
           cd ..
           cp -r diario-skin/dist _site/diario-skin
+          mkdir -p _site/ditado-voz
+          cd ditado-voz
+          cp index.html styles.css app.js core.js sw.js manifest.webmanifest ../_site/ditado-voz/
+          cp -r icones ../_site/ditado-voz/
+          cd ..
           touch _site/.nojekyll
 
       # Tenta ligar o Pages (fonte "GitHub Actions") se ainda não estiver ligado.

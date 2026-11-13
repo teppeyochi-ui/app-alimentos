@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect id="fundo" width="512" height="512" rx="112" fill="#0C6A87"/>
+  <g transform="translate(256 256)">
+    <!-- Bandeja skin vista de cima: borda, produto e o filme colado por cima -->
+    <rect x="-168" y="-118" width="336" height="236" rx="44" fill="none" stroke="#ffffff" stroke-width="26"/>
+    <path d="M -104 22 C -84 -52 -18 -72 34 -50 C 86 -28 112 -4 104 34 C 96 68 44 76 -8 68 C -58 60 -112 58 -104 22 Z" fill="#ffffff"/>
+    <path d="M -128 -74 C -76 -96 -30 -100 16 -92" fill="none" stroke="#F08A4B" stroke-width="16" stroke-linecap="round"/>
+  </g>
+</svg>

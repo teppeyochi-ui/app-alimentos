@@ -1,14 +1,25 @@
-# Publica os apps no GitHub Pages.
-# Classificador de Camarão: https://teppeyochi-ui.github.io/app-alimentos/
-# Dita (ditado por voz):    https://teppeyochi-ui.github.io/app-alimentos/ditado-voz/
+# Publica os aplicativos no GitHub Pages.
+#   https://teppeyochi-ui.github.io/app-alimentos/              → Classificador de Camarão
+#   https://teppeyochi-ui.github.io/app-alimentos/diario-skin/  → Diário da Linha Skin
+#   https://teppeyochi-ui.github.io/app-alimentos/ditado-voz/   → Dita (ditado por voz)
 # Configuração única: Settings → Pages → Build and deployment → Source: "GitHub Actions".
-name: Publicar apps no GitHub Pages
+#
+# Diário da Linha Skin: ligado ao projeto Supabase indicado no passo "Diário — build".
+# O endereço e a chave "publishable" são públicos por natureza (vão dentro do
+# aplicativo publicado); quem protege os dados são o login e as políticas do banco.
+# Para apontar para outro projeto sem mexer neste arquivo, crie duas variáveis em
+# Settings → Secrets and variables → Actions → Variables (elas têm prioridade):
+#   VITE_SUPABASE_URL       endereço do projeto (https://xxxx.supabase.co)
+#   VITE_SUPABASE_ANON_KEY  chave pública ("anon" ou "publishable"), nunca a service_role
+# e rode este workflow de novo (aba Actions → Run workflow).
+name: Publicar aplicativos no GitHub Pages
 
 on:
   push:
     branches: [main]
     paths:
       - 'classificador-camarao/**'
+      - 'diario-skin/**'
       - 'ditado-voz/**'
       - '.github/workflows/pages-classificador.yml'
   workflow_dispatch:
@@ -34,28 +45,49 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: diario-skin/package-lock.json
 
       # Não publica se as regras ou tabelas quebrarem os testes do motor.
-      - name: Testes do motor
+      - name: Classificador — testes do motor
         working-directory: classificador-camarao
         run: node teste-motor.js
 
-      - name: Testes do núcleo do Dita
+      - name: Dita — testes do núcleo
         working-directory: ditado-voz
         run: node teste-nucleo.js
 
-      # Só os arquivos do app vão para o site (testes, planilha e capturas ficam fora).
+      - name: Diário — dependências
+        working-directory: diario-skin
+        run: npm ci
+
+      # Cálculos, carga inicial, sincronização e exportação.
+      - name: Diário — testes de unidade
+        working-directory: diario-skin
+        run: npm test
+
+      - name: Diário — build
+        working-directory: diario-skin
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://ksufrelltvmwtveyiqmv.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || 'sb_publishable_WYvwmn769gQpGODYPUDUTA_hbeuZcKm' }}
+        run: npm run build
+
+      # Só os arquivos dos aplicativos vão para o site (testes, planilhas e capturas ficam fora).
       - name: Montar o site
         run: |
           mkdir -p _site
           cd classificador-camarao
           cp index.html styles.css app.js core.js sw.js manifest.webmanifest ../_site/
           cp -r icones ../_site/
-          mkdir -p ../_site/ditado-voz
-          cd ../ditado-voz
+          cd ..
+          cp -r diario-skin/dist _site/diario-skin
+          mkdir -p _site/ditado-voz
+          cd ditado-voz
           cp index.html styles.css app.js core.js sw.js manifest.webmanifest ../_site/ditado-voz/
           cp -r icones ../_site/ditado-voz/
-          touch ../_site/.nojekyll
+          cd ..
+          touch _site/.nojekyll
 
       # Tenta ligar o Pages (fonte "GitHub Actions") se ainda não estiver ligado.
       - uses: actions/configure-pages@v5

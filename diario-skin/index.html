@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0C6A87" />
+    <meta name="description" content="Diário da Linha Skin — registro das ordens de produção da termoformadora ULMA (Frescatto P&D)." />
+    <link rel="icon" type="image/svg+xml" href="./icones/icone.svg" />
+    <link rel="apple-touch-icon" href="./icones/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Diário Skin" />
+    <title>Diário da Linha Skin</title>
+    <script>
+      // Aplica o tema escolhido antes de pintar a tela (evita piscar claro/escuro).
+      try {
+        var t = localStorage.getItem('diario-skin:tema');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="raiz"></div>
+    <noscript>Este aplicativo precisa de JavaScript.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

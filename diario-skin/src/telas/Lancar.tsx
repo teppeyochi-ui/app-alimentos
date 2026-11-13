@@ -11,6 +11,7 @@ import {
 import {
   FILMES_FUNDO, FILMES_TAMPA, MOTIVOS_PARADA, MOTIVOS_RETRABALHO, PARAMETROS, dentroDoLimite, filmeTampaSugerido,
 } from '../lib/constantes';
+import { confirmarMolde } from '../lib/cadastros';
 import { MODO_LOCAL } from '../lib/config';
 import { blobDaFoto, reduzirFoto } from '../lib/fotos';
 import { agoraHHMM, dataBR, dataHoraBR, gramas, horaCurta, kg, num, numCampo, pct } from '../lib/formato';
@@ -106,6 +107,23 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
   // No peso variável (PDV) as boas só podem ser contadas pelas caixas: embalagens por caixa é obrigatório.
   const faltaEpc = op.produto_descricao !== '' && !op.peso_nominal_kg && !op.embalagens_por_caixa;
   const epcDaCaixa = embalagensPorCaixaCalculado(produto?.peso_caixa_kg ?? null, op.peso_nominal_kg);
+  // Só o administrador altera o catálogo (em modo local, o aparelho é o administrador).
+  const podeCatalogo = e.perfil?.papel === 'admin';
+  const [gravandoMolde, setGravandoMolde] = useState(false);
+
+  /** Põe o molde na OP e, se o usuário puder, grava no catálogo como confirmado. */
+  async function escolherMolde(m: Molde) {
+    if (!produto) return;
+    if (op.molde !== m) mudar({ molde: m, filme_tampa: filmeTampaSugerido(m) });
+    if (!podeCatalogo) return;
+    setGravandoMolde(true);
+    try {
+      const erro = await confirmarMolde(produto, m);
+      avisar(erro ?? `Molde ${m} gravado no catálogo para este SKU.`, erro ? 'erro' : 'ok');
+    } finally {
+      setGravandoMolde(false);
+    }
+  }
   const ehRascunho = e.rascunho?.id === op.id;
 
   // ---------------------------------------------------------------- fotos
@@ -288,12 +306,42 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
                 {produto.derivacao ? ` · derivação ${produto.derivacao}` : ''} ·{' '}
                 {produto.peso_caixa_kg ? `caixa de ${numCampo(produto.peso_caixa_kg)} kg` : 'caixa de peso variável'} ·{' '}
                 {produto.peso_nominal_kg ? `peso nominal ${gramas(produto.peso_nominal_kg)}` : 'peso variável (PDV)'} ·{' '}
-                {produto.molde ? `molde ${produto.molde} (${produto.molde === '3x1' ? 3 : 2} bandejas por passo)` : 'molde a confirmar'}
+                {produto.molde ? `molde ${produto.molde} (${produto.molde === '3x1' ? 3 : 2} bandejas por passo)${produto.molde_a_confirmar ? ', a confirmar' : ''}` : 'molde a escolher'}
               </p>
             )}
-            {produto && !produto.molde && (
-              <div className="notice warn" role="status">
-                Este SKU ainda não tem molde no catálogo. Confira abaixo se o molde é 2x1 ou 3x1.
+            {produto && editavel && (produto.molde_a_confirmar || produto.molde !== op.molde) && (
+              <div className="notice warn conf" role="group" aria-labelledby="r-conf-molde">
+                <span id="r-conf-molde">
+                  {!produto.molde_a_confirmar
+                    ? `O catálogo diz molde ${produto.molde}, mas esta OP está com ${op.molde}.`
+                    : produto.molde
+                      ? `O molde ${produto.molde} deste SKU foi copiado do mesmo produto em outra origem. Confirme ou corrija:`
+                      : 'A planilha de produtos não traz o molde deste SKU. Escolha:'}
+                </span>
+                {produto.molde_a_confirmar && (
+                  <div className="seg duas">
+                    {(['2x1', '3x1'] as Molde[]).map((m) => (
+                      <button type="button" key={m} aria-pressed={op.molde === m} disabled={gravandoMolde} onClick={() => void escolherMolde(m)}>
+                        {m} ({m === '3x1' ? 3 : 2} bandejas)
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!produto.molde_a_confirmar && podeCatalogo && (
+                  <div className="row">
+                    <button type="button" disabled={gravandoMolde} onClick={() => void escolherMolde(op.molde)}>
+                      Corrigir o catálogo para {op.molde}
+                    </button>
+                    <button type="button" className="ghost" onClick={() => mudar({ molde: produto.molde!, filme_tampa: filmeTampaSugerido(produto.molde!) })}>
+                      Voltar para {produto.molde}
+                    </button>
+                  </div>
+                )}
+                <span className="small">
+                  {podeCatalogo
+                    ? 'A escolha fica gravada no catálogo e vale para as próximas OPs deste SKU.'
+                    : 'A escolha vale para esta OP. Só o administrador grava o molde no catálogo.'}
+                </span>
               </div>
             )}
           </div>

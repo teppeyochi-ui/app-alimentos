@@ -77,7 +77,27 @@ const {
   await p.getByLabel('Buscar por SKU, nome ou derivação').fill('CXA 7,5 PESCADA');
   verificar(await p.locator('.lista-produtos button').count() >= 2, 'busca por derivação acha a pescada da caixa de 7,5 kg');
   await p.locator('dialog[open]').getByRole('button', { name: 'Fechar' }).click();
+
+  console.log('Molde a confirmar: o operador escolhe e a escolha fica no catálogo');
+  await escolherProduto('2461670106378F-975'); // molde 2x1 herdado do mesmo produto
+  verificar(await p.getByText('O molde 2x1 deste SKU foi copiado do mesmo produto em outra origem. Confirme ou corrija:').count() === 1, 'SKU com molde herdado pede confirmação');
+  await conferirLayout('Confirmação de molde');
+  await p.getByRole('button', { name: '3x1 (3 bandejas)', exact: true }).click();
+  await p.getByText('Molde 3x1 gravado no catálogo para este SKU.').waitFor();
+  verificar((await campo('Molde').inputValue()) === '3x1', 'molde corrigido para 3x1 na OP');
+  verificar(await p.getByText(/Confirme ou corrija/).count() === 0, 'depois de confirmado, não pergunta de novo');
+  verificar((await p.getByText(/^Do catálogo:/).innerText()).includes('molde 3x1 (3 bandejas por passo)') && !(await p.getByText(/^Do catálogo:/).innerText()).includes('a confirmar'), 'catálogo passou a dizer 3x1, confirmado');
+  await escolherProduto('0938907200103M-815'); // sem molde na planilha
+  verificar(await p.getByText('A planilha de produtos não traz o molde deste SKU. Escolha:').count() === 1, 'SKU sem molde pede a escolha');
+  await p.getByRole('button', { name: '2x1 (2 bandejas)', exact: true }).click();
+  await p.getByText('Molde 2x1 gravado no catálogo para este SKU.').waitFor();
+  verificar((await campo('Molde').inputValue()) === '2x1', 'molde escolhido: 2x1');
+  // Produto com molde da planilha: trocar o molde na OP oferece corrigir o catálogo.
   await escolherProduto('16507014073621-011');
+  await campo('Molde').selectOption('2x1');
+  verificar(await p.getByText('O catálogo diz molde 3x1, mas esta OP está com 2x1.').count() === 1, 'molde diferente do catálogo: avisa');
+  await p.getByRole('button', { name: 'Voltar para 3x1' }).click();
+  verificar((await campo('Molde').inputValue()) === '3x1' && await p.getByText(/O catálogo diz molde/).count() === 0, 'volta para o molde do catálogo');
 
   console.log('Critério 4: lançar sem internet (modo avião)');
   await ctx.setOffline(true);
@@ -86,8 +106,6 @@ const {
   verificar((await campo('Molde').inputValue()) === '2x1', 'salmão 600 g: molde 2x1');
   verificar((await campo('Embalagens por caixa').inputValue()) === '15', 'salmão 600 g: caixa de 9 kg = 15 embalagens');
   await campo('OP').fill('20109999');
-  // A OP de teste da especificação usa 9 embalagens por caixa.
-  await campo('Embalagens por caixa').fill('9');
   await campo('Hora de início').fill('08:00');
   await campo('Temp. do produto (°C)').fill('18');
   await p.getByRole('button', { name: 'Trocar o sinal da temperatura' }).click();
@@ -116,7 +134,7 @@ const {
 
   await campo('Hora de fim').fill('10:30');
   await campo('Passo no fim').fill('600');
-  await campo('Caixas de produto acabado').fill('110');
+  await campo('Caixas de produto acabado').fill('66'); // 66 caixas × 15 = 990 embalagens
   await campo('Peso final (kg)').fill('620');
   await p.getByRole('button', { name: 'Boa', exact: true }).click();
   await p.getByLabel('Adicionar foto do produto final').setInputFiles([await fotoDeTeste(p, 'produto')]);
@@ -140,7 +158,7 @@ const {
   await p.waitForFunction(() => document.querySelector('.actions .stat')?.textContent.includes('Salvo no aparelho'));
   await p.reload();
   await p.getByRole('heading', { name: 'Resultado desta OP' }).waitFor();
-  verificar((await campo('Caixas de produto acabado').inputValue()) === '110', 'reabrir sem internet: a OP continua com os dados');
+  verificar((await campo('Caixas de produto acabado').inputValue()) === '66', 'reabrir sem internet: a OP continua com os dados');
   verificar((await indicador('Retrabalho')).includes('7'), 'reabrir sem internet: contagem de retrabalho mantida');
   verificar(await p.locator('.ph img').count() === 3, 'reabrir sem internet: as 3 fotos continuam no aparelho');
 
@@ -148,7 +166,7 @@ const {
   await campo('Caixas de produto acabado').fill('140');
   await p.getByRole('button', { name: 'Encerrar OP' }).click();
   verificar(await p.getByText('Boas + retrabalho passam das bandejas formadas. Confira passos e caixas.').count() === 1, 'bloqueia quando boas + retrabalho passam de 102% das formadas');
-  await campo('Caixas de produto acabado').fill('110');
+  await campo('Caixas de produto acabado').fill('66'); // 66 caixas × 15 = 990 embalagens
   await p.getByRole('button', { name: 'Encerrar OP' }).click();
   await p.getByRole('heading', { name: 'Encerrar esta OP?' }).waitFor();
   await conferirLayout('Diálogo de encerramento');

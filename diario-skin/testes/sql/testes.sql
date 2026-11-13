@@ -94,7 +94,8 @@ update public.perfis set ativo = true where id = '33333333-3333-4333-8333-333333
 select teste.igual('118 SKUs no catálogo', (select count(*) from public.produtos), 118::bigint);
 select teste.igual('derivação e caixa do 10068093246591-964', (select derivacao || ' / ' || peso_caixa_kg || ' / ' || embalagens_por_caixa from public.produtos where codigo = '10068093246591-964'), 'FRESCATTO CXA 7,5 / 7.5 / 15');
 select teste.igual('PDV fica sem embalagens por caixa', (select count(*) from public.produtos where peso_nominal_kg is null and embalagens_por_caixa is not null), 0::bigint);
-select teste.igual('6 SKUs com o molde a confirmar', (select count(*) from public.produtos where molde is null), 6::bigint);
+select teste.igual('6 SKUs sem molde', (select count(*) from public.produtos where molde is null), 6::bigint);
+select teste.igual('27 SKUs pedem confirmação do molde (6 sem molde + 21 herdados)', (select count(*) from public.produtos where molde_a_confirmar), 27::bigint);
 select teste.igual('todo SKU tem derivação e espécie', (select count(*) from public.produtos where derivacao is null or especie is null), 0::bigint);
 select teste.igual('2 moldes', (select count(*) from public.moldes), 2::bigint);
 select teste.igual('1 receita padrão', (select count(*) from public.receitas_padrao), 1::bigint);

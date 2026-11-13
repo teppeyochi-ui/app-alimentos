@@ -51,8 +51,11 @@ describe('carga inicial', () => {
     expect(dourado).toMatchObject({ derivacao: 'FRESC CXA PDV PF', peso_caixa_kg: null, peso_nominal_kg: null, embalagens_por_caixa: null });
   });
 
-  it('SKU de filial herda o molde do mesmo produto; 6 ficam com o molde a confirmar', () => {
-    expect(catalogo.produtos.find((x) => x.codigo === '2461670106378F-975')?.molde).toBe('2x1');
+  it('SKU de filial herda o molde do mesmo produto e pede confirmação; 6 ficam sem molde', () => {
+    expect(catalogo.produtos.find((x) => x.codigo === '2461670106378F-975')).toMatchObject({ molde: '2x1', molde_a_confirmar: true });
+    expect(catalogo.produtos.find((x) => x.codigo === '24616701063781-975')).toMatchObject({ molde: '2x1', molde_a_confirmar: false });
+    expect(catalogo.produtos.filter((p) => p.molde_a_confirmar)).toHaveLength(27);
+    expect(catalogo.produtos.filter((p) => p.molde_a_confirmar && p.molde != null)).toHaveLength(21);
     expect(catalogo.produtos.filter((p) => p.molde == null).map((p) => p.codigo).sort()).toEqual([
       '0622203000134F-1058', '0634402500133F-1058', '0908409931213E-086', '0908409931413E-086', '0908409931513E-086', '0938907200103M-815',
     ]);

@@ -179,7 +179,9 @@ O catálogo vem da planilha de produtos do P&D (`dados/catalogo.csv`, 118 SKUs):
 | `DESCR_PRO` | Descrição |
 | `DESCR_DER` (derivação) | Mostrada no lançamento e na busca. A caixa escrita nela vira o **peso da caixa**: “CXA 7,5” = 7,5 kg; “CXA PDV” = peso variável |
 | `DESCR_AGP` | Espécie: a orientação usa para comparar com produtos parecidos |
-| `MOLDE` | Molde. Onde a planilha diz “Não encontrado”, o SKU herda o molde do mesmo produto em outra origem (21 SKUs); 6 ficaram com o **molde a confirmar** e o operador escolhe na OP |
+| `MOLDE` | Molde. Onde a planilha diz “Não encontrado” (27 SKUs), o molde fica **a confirmar**: 21 herdam o molde do mesmo produto em outra origem e 6 ficam sem molde |
+
+**Molde a confirmar:** ao escolher um desses 27 SKUs, o lançamento mostra os botões **2x1** e **3x1**, com o molde herdado já marcado. A escolha vale para a OP e, feita pelo administrador (ou em modo local), fica gravada no catálogo: o SKU deixa de pedir confirmação. Operador e P&D escolhem o molde da OP, e a próxima OP do mesmo SKU já sugere esse molde. Em *Administração → Produtos*, a caixa “só os com molde a confirmar” lista os que faltam, com os mesmos dois botões. Em qualquer outro SKU, trocar o molde na OP faz o aplicativo avisar a diferença e oferecer “Corrigir o catálogo”.
 
 **Embalagens por caixa:**
 
@@ -231,7 +233,7 @@ No painel, **Exportar CSV** e **Exportar XLSX** geram uma linha por OP do filtro
 | `ops.data` pode ficar vazia no histórico da planilha | Duas das 15 linhas do histórico vieram sem data; no diário a data continua obrigatória |
 | `ops.sincronizado_em` (coluna nova) | Hora em que o servidor recebeu a gravação; os aparelhos baixam só o que mudou |
 | `ops.analise_ia` (coluna nova, JSON) | Última avaliação da foto do produto pela IA |
-| `produtos.derivacao`, `peso_caixa_kg`, `especie` (colunas novas); `produtos.molde` pode ficar vazio | Planilha de produtos do P&D: derivação, caixa e agrupamento; 6 SKUs sem molde definido |
+| `produtos.derivacao`, `peso_caixa_kg`, `especie`, `molde_a_confirmar` (colunas novas); `produtos.molde` pode ficar vazio | Planilha de produtos do P&D: derivação, caixa e agrupamento; 27 SKUs com o molde a confirmar |
 | `receitas_padrao.ciclo_teorico_s` (coluna nova) | Ciclo teórico configurável (10,3 s na carga inicial) |
 | `perfis.ativo` começa `false` | Conta nova só entra depois de liberada |
 | Parâmetros alterados comparam com a receita que valia **na data da OP** | Mudar a receita padrão não reescreve a leitura das OPs antigas |
@@ -275,8 +277,7 @@ O teste integrado usa uma API de teste que imita só os endereços do Supabase q
 ## Pontos em aberto (seção 12 da especificação)
 
 - **Embalagens por caixa:** no peso fixo sai do peso da caixa da derivação; no PDV o operador informa (o aplicativo sugere o valor da última OP do mesmo SKU). Confirmar com o P&D os 4 SKUs em que a conta não fecha: `10256093283531-1061` (7 oz, caixa de 4 kg), `16507014073621-010` (200 g, caixa de 18,144 kg), `24616245167481-978` (150 g, caixa de 3,62 kg) e `24664020761801-032` (240 g, caixa de 4 kg).
-- **Salmão 600 g (`24616701063781-975`):** a derivação diz caixa de 9 kg, ou seja, 15 embalagens por caixa. A OP de teste da especificação usa 9 por caixa. Confirmar qual vale.
-- **Molde a confirmar** em 6 SKUs (`0622203000134F-1058`, `0634402500133F-1058`, `0908409931213E-086`, `0908409931413E-086`, `0908409931513E-086`, `0938907200103M-815`) e **molde herdado** do mesmo produto em 21 SKUs de filial: conferir em *Administração → Produtos*.
+- **Molde a confirmar** em 27 SKUs: 6 sem molde (`0622203000134F-1058`, `0634402500133F-1058`, `0908409931213E-086`, `0908409931413E-086`, `0908409931513E-086`, `0938907200103M-815`) e 21 de filial com o molde herdado do mesmo produto. São confirmados no lançamento ou em *Administração → Produtos* (ver [Catálogo de produtos](#catálogo-de-produtos)).
 - **Regras de orientação por defeito:** texto a validar pelo P&D e, se possível, com a ULMA (ver [Orientação ao operador](#orientação-ao-operador)).
 - Espessura do filme de **tampa do molde 2x1** (0,1239 kg/m²): editável em *Administração → Filme por molde*.
 - **Molde 2x2:** não incluído.

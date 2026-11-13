@@ -45,19 +45,24 @@ export default function Admin() {
 
 const PRODUTO_NOVO: Produto = {
   codigo: '', descricao: '', molde: '3x1', peso_nominal_kg: null, embalagens_por_caixa: null,
-  derivacao: null, peso_caixa_kg: null, especie: null, ativo: true,
+  derivacao: null, peso_caixa_kg: null, especie: null, molde_a_confirmar: false, ativo: true,
 };
 
 function Produtos({ e }: { e: Estado }) {
   const [busca, setBusca] = useState('');
+  const [soAConfirmar, setSoAConfirmar] = useState(false);
   const [editando, setEditando] = useState<{ produto: Produto; novo: boolean } | null>(null);
   const [importar, setImportar] = useState<{ produtos: Produto[]; erros: string[]; novos: number } | null>(null);
   const [gravando, setGravando] = useState(false);
 
   const lista = useMemo(() => {
     const termos = normalizar(busca).split(/\s+/).filter(Boolean);
-    return e.produtos.filter((p) => termos.every((t) => normalizar(`${p.codigo} ${p.descricao} ${p.derivacao ?? ''} ${p.especie ?? ''}`).includes(t)));
-  }, [busca, e.produtos]);
+    return e.produtos.filter(
+      (p) => (!soAConfirmar || p.molde_a_confirmar) &&
+        termos.every((t) => normalizar(`${p.codigo} ${p.descricao} ${p.derivacao ?? ''} ${p.especie ?? ''}`).includes(t)),
+    );
+  }, [busca, e.produtos, soAConfirmar]);
+  const aConfirmar = e.produtos.filter((p) => p.molde_a_confirmar).length;
 
   async function gravar(produtos: Produto[], mensagem: string): Promise<boolean> {
     setGravando(true);
@@ -79,6 +84,7 @@ function Produtos({ e }: { e: Estado }) {
         ? {
             ...p,
             molde: p.molde ?? atual.molde,
+            molde_a_confirmar: p.molde ? p.molde_a_confirmar : atual.molde_a_confirmar,
             embalagens_por_caixa: p.embalagens_por_caixa ?? atual.embalagens_por_caixa,
             derivacao: p.derivacao ?? atual.derivacao,
             peso_caixa_kg: p.peso_caixa_kg ?? atual.peso_caixa_kg,
@@ -110,6 +116,12 @@ function Produtos({ e }: { e: Estado }) {
           <input type="file" accept=".csv,text/csv" aria-label="Importar CSV de produtos" onChange={(ev) => { void lerArquivo(ev.target.files?.[0]); ev.target.value = ''; }} />
         </span>
       </div>
+      {aConfirmar > 0 && (
+        <label className="linha">
+          <input type="checkbox" checked={soAConfirmar} onChange={(ev) => setSoAConfirmar(ev.target.checked)} />
+          só os {aConfirmar} com molde a confirmar
+        </label>
+      )}
       <p className="small muted">
         CSV com ponto e vírgula e a primeira linha{' '}
         <span className="mono">codigo;descricao;molde;peso_nominal_kg;embalagens_por_caixa;derivacao;peso_caixa_kg;especie</span>{' '}
@@ -121,12 +133,25 @@ function Produtos({ e }: { e: Estado }) {
           <div className="linha-adm" key={p.codigo}>
             <div className="t">
               <b>{p.descricao}</b>{!p.ativo && <> <span className="chip">inativo</span></>}
+              {p.molde_a_confirmar && <> <span className="chip on">molde a confirmar</span></>}
               <div className="small muted mono">
-                {p.codigo} · {p.molde ?? 'molde a confirmar'} · {p.peso_nominal_kg ? gramas(p.peso_nominal_kg) : 'peso variável (PDV)'} ·{' '}
+                {p.codigo} · {p.molde ?? 'sem molde'} · {p.peso_nominal_kg ? gramas(p.peso_nominal_kg) : 'peso variável (PDV)'} ·{' '}
                 {p.embalagens_por_caixa ? `${p.embalagens_por_caixa} por caixa` : p.peso_nominal_kg ? 'emb./caixa a definir' : 'emb./caixa informada na OP'}
               </div>
               {(p.derivacao || p.especie) && (
                 <div className="small muted">{[p.derivacao, p.especie].filter(Boolean).join(' · ')}</div>
+              )}
+              {p.molde_a_confirmar && (
+                <div className="row" style={{ marginTop: 6 }}>
+                  {(['2x1', '3x1'] as Molde[]).map((m) => (
+                    <button
+                      type="button" key={m} disabled={gravando} aria-label={`Confirmar molde ${m} para ${p.descricao} (${p.codigo})`}
+                      onClick={() => void gravar([{ ...p, molde: m, molde_a_confirmar: false }], `Molde ${m} confirmado.`)}
+                    >
+                      {p.molde === m ? `Confirmar ${m}` : `É ${m}`}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
             <button type="button" onClick={() => setEditando({ produto: { ...p }, novo: false })} aria-label={`Editar ${p.descricao} (${p.codigo})`}>Editar</button>
@@ -198,7 +223,11 @@ function Produtos({ e }: { e: Estado }) {
                 onClick={async () => {
                   if (!ed.codigo || !ed.descricao.trim()) { avisar('Informe código e descrição.', 'erro'); return; }
                   if (editando!.novo && e.produtos.some((p) => p.codigo === ed.codigo)) { avisar('Já existe um produto com este código.', 'erro'); return; }
-                  const produto = { ...ed, descricao: ed.descricao.trim(), derivacao: ed.derivacao?.trim() || null, especie: ed.especie?.trim() || null };
+                  // Salvar aqui com o molde escolhido confirma o molde.
+                  const produto = {
+                    ...ed, descricao: ed.descricao.trim(), derivacao: ed.derivacao?.trim() || null, especie: ed.especie?.trim() || null,
+                    molde_a_confirmar: ed.molde == null,
+                  };
                   if (await gravar([produto], 'Produto salvo.')) setEditando(null);
                 }}
               >

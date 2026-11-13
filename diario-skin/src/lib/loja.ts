@@ -12,7 +12,7 @@ import { hojeISO, uuid } from './formato';
 import { historicoDoCsv, produtosDoCsv } from './semente';
 import type { Servidor } from './servidor';
 import type {
-  AnaliseIa, Foto, MoldeInfo, MotivoRetrabalho, Op, OpLocal, Perfil, Produto, ReceitaPadrao,
+  AnaliseIa, Foto, Molde, MoldeInfo, MotivoRetrabalho, Op, OpLocal, Perfil, Produto, ReceitaPadrao,
 } from './tipos';
 
 export interface EstadoSync {
@@ -129,10 +129,13 @@ export function mesclarCatalogo(noAparelho: Produto[], daSemente: Produto[]): Pr
   const porCodigo = new Map(noAparelho.map((p) => [p.codigo, p]));
   for (const novo of daSemente) {
     const atual = porCodigo.get(novo.codigo);
+    // Molde já confirmado neste aparelho vale mais do que o da planilha.
+    const confirmado = atual?.molde != null && atual.molde_a_confirmar === false && novo.molde_a_confirmar;
     porCodigo.set(novo.codigo, atual
       ? {
           ...novo,
-          molde: novo.molde ?? atual.molde ?? null,
+          molde: confirmado ? atual.molde : novo.molde ?? atual.molde ?? null,
+          molde_a_confirmar: confirmado ? false : novo.molde_a_confirmar,
           embalagens_por_caixa: atual.embalagens_por_caixa ?? novo.embalagens_por_caixa,
           ativo: atual.ativo,
         }
@@ -142,7 +145,10 @@ export function mesclarCatalogo(noAparelho: Produto[], daSemente: Produto[]): Pr
 }
 
 /** Produtos e OPs gravados por versões anteriores não têm os campos novos. */
-const produtoCompleto = (p: Produto): Produto => ({ ...p, derivacao: p.derivacao ?? null, peso_caixa_kg: p.peso_caixa_kg ?? null, especie: p.especie ?? null });
+const produtoCompleto = (p: Produto): Produto => ({
+  ...p, derivacao: p.derivacao ?? null, peso_caixa_kg: p.peso_caixa_kg ?? null, especie: p.especie ?? null,
+  molde_a_confirmar: p.molde_a_confirmar ?? p.molde == null,
+});
 const opCompleta = (o: OpLocal): OpLocal => (o.analise_ia === undefined ? { ...o, analise_ia: null } : o);
 
 /**
@@ -376,6 +382,14 @@ export function embalagensPorCaixaConhecido(produto: Produto): number | null {
   return anteriores[0]?.embalagens_por_caixa ?? null;
 }
 
+/** Molde usado na OP mais recente deste SKU (para o SKU que o catálogo ainda não confirmou). */
+export function moldeDaUltimaOp(codigo: string): Molde | null {
+  const anteriores = estado.ops
+    .filter((o) => o.produto_codigo === codigo && o.status !== 'cancelada')
+    .sort((a, b) => (b.data ?? '').localeCompare(a.data ?? '') || (b.criado_em ?? '').localeCompare(a.criado_em ?? ''));
+  return anteriores[0]?.molde ?? null;
+}
+
 /**
  * Escolher o produto preenche molde, peso nominal, filme de tampa e embalagens
  * por caixa. No produto de peso variável (PDV) sem valor conhecido, embalagens
@@ -383,7 +397,8 @@ export function embalagensPorCaixaConhecido(produto: Produto): number | null {
  */
 export function escolherProduto(id: string, produto: Produto): void {
   mudarOp(id, (op) => {
-    const molde = produto.molde ?? op.molde;
+    // SKU sem molde no catálogo: sugere o da última OP do mesmo SKU.
+    const molde = produto.molde ?? moldeDaUltimaOp(produto.codigo) ?? op.molde;
     return {
       ...op,
       produto_codigo: produto.codigo,

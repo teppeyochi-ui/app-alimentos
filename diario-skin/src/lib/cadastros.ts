@@ -5,7 +5,7 @@ import { bancoLocal } from './banco-local';
 import { lerEstado, lerServidor, receberCadastros } from './loja';
 import { classificar } from './servidor';
 import { sincronizar } from './sincronizacao';
-import type { MoldeInfo, Perfil, Produto, ReceitaPadrao } from './tipos';
+import type { Molde, MoldeInfo, Perfil, Produto, ReceitaPadrao } from './tipos';
 
 function mensagem(e: unknown): string {
   const erro = classificar(e);
@@ -47,6 +47,11 @@ export function salvarProdutos(novos: Produto[]): Promise<string | null> {
       await receberCadastros({ ...atuais(), produtos });
     },
   );
+}
+
+/** Grava no catálogo o molde confirmado para o SKU (deixa de pedir confirmação). */
+export function confirmarMolde(produto: Produto, molde: Molde): Promise<string | null> {
+  return salvarProdutos([{ ...produto, molde, molde_a_confirmar: false }]);
 }
 
 export function salvarMolde(molde: MoldeInfo): Promise<string | null> {

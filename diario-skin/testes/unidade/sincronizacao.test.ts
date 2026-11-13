@@ -6,6 +6,7 @@ import {
   adicionarFoto, adicionarParada, alterarOp, contarRetrabalho, definirPerfil, descarregar, encerrarOp, escolherProduto,
   VERSAO_SEMENTE, iniciarLoja, lerEstado, novaOp, removerFoto, removerParada,
 } from '../../src/lib/loja';
+import { confirmarMolde } from '../../src/lib/cadastros';
 import { calcular, validarEncerramento } from '../../src/lib/calc';
 import { reiniciarSincronizacao, sincronizar } from '../../src/lib/sincronizacao';
 import type { Perfil, Produto } from '../../src/lib/tipos';
@@ -14,7 +15,7 @@ import { ServidorFalso } from './servidor-falso';
 const OPERADOR: Perfil = { id: '33333333-3333-4333-8333-333333333333', nome: 'Operador', papel: 'operador', ativo: true };
 const SALMAO: Produto = {
   codigo: '24616701063781-975', descricao: 'F. SALMON PREM PEDACOS S/E 600GR SKIN PREMIUM', molde: '2x1',
-  peso_nominal_kg: 0.6, embalagens_por_caixa: 9, derivacao: null, peso_caixa_kg: null, especie: 'SALMON', ativo: true,
+  peso_nominal_kg: 0.6, embalagens_por_caixa: 9, derivacao: null, peso_caixa_kg: null, especie: 'SALMON', molde_a_confirmar: false, ativo: true,
 };
 const foto = () => new Blob([new Uint8Array(2048)], { type: 'image/jpeg' });
 
@@ -256,7 +257,8 @@ describe('modo local (sem servidor)', () => {
     expect(produtos.find((p) => p.codigo === '24616701063781-975')).toMatchObject({
       derivacao: 'FRESCATTO CXA 09', peso_caixa_kg: 9, especie: 'SALMON', embalagens_por_caixa: 12, ativo: false,
     });
-    expect(produtos.find((p) => p.codigo === 'XX-1')).toMatchObject({ derivacao: null, molde: '3x1' });
+    expect(produtos.find((p) => p.codigo === 'XX-1')).toMatchObject({ derivacao: null, molde: '3x1', molde_a_confirmar: false });
+    expect(produtos.filter((p) => p.molde_a_confirmar)).toHaveLength(27);
     expect(await bancoLocal.ler('versao_semente')).toBe(VERSAO_SEMENTE);
   });
 
@@ -274,5 +276,38 @@ describe('modo local (sem servidor)', () => {
     expect(lerEstado().ops.find((o) => o.id === id)).toMatchObject({ molde: '3x1', produto_codigo: '0938907200103M-815' });
     const op = lerEstado().ops.find((o) => o.id === id)!;
     expect(validarEncerramento(op, calcular(op, lerEstado().moldes)).faltas).toContain('embalagens por caixa (produto de peso variável)');
+  });
+
+  it('molde confirmado fica no catálogo, vale para as próximas OPs e sobrevive à atualização do catálogo', async () => {
+    await bancoLocal.fechar();
+    globalThis.indexedDB = new IDBFactory();
+    await iniciarLoja({ servidor: null });
+    const SEM_MOLDE = '0938907200103M-815';
+    const HERDADO = '2461670106378F-975'; // herdou 2x1 do mesmo produto
+    const produto = (codigo: string) => lerEstado().produtos.find((p) => p.codigo === codigo)!;
+    expect(produto(SEM_MOLDE)).toMatchObject({ molde: null, molde_a_confirmar: true });
+    expect(produto(HERDADO)).toMatchObject({ molde: '2x1', molde_a_confirmar: true });
+
+    // Sem confirmação no catálogo, a OP nova do mesmo SKU sugere o molde da OP anterior.
+    const a = novaOp().id;
+    escolherProduto(a, produto(SEM_MOLDE));
+    alterarOp(a, { molde: '3x1' });
+    const b = novaOp().id;
+    escolherProduto(b, produto(SEM_MOLDE));
+    expect(lerEstado().ops.find((o) => o.id === b)!.molde).toBe('3x1');
+
+    expect(await confirmarMolde(produto(SEM_MOLDE), '3x1')).toBeNull();
+    expect(await confirmarMolde(produto(HERDADO), '3x1')).toBeNull(); // corrigido: era 2x1
+    expect(produto(SEM_MOLDE)).toMatchObject({ molde: '3x1', molde_a_confirmar: false });
+    expect(produto(HERDADO)).toMatchObject({ molde: '3x1', molde_a_confirmar: false });
+    expect(lerEstado().produtos.filter((p) => p.molde_a_confirmar)).toHaveLength(25);
+
+    // Uma atualização do catálogo embutido não desfaz o que foi confirmado no aparelho.
+    await descarregar();
+    await bancoLocal.gravar('versao_semente', 1);
+    await iniciarLoja({ servidor: null });
+    expect(produto(SEM_MOLDE)).toMatchObject({ molde: '3x1', molde_a_confirmar: false });
+    expect(produto(HERDADO)).toMatchObject({ molde: '3x1', molde_a_confirmar: false });
+    expect(lerEstado().produtos).toHaveLength(118);
   });
 });

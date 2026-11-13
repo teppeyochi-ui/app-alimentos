@@ -24,8 +24,13 @@ export interface Perfil {
 export interface Produto {
   codigo: string; // SKU (PROD_DER)
   descricao: string;
-  /** null = molde ainda não confirmado para este SKU: o operador escolhe no lançamento. */
+  /** null = a planilha não traz o molde deste SKU: o operador escolhe no lançamento. */
   molde: Molde | null;
+  /**
+   * true = o molde não veio da planilha (está vazio ou foi herdado do mesmo
+   * produto em outra origem): o lançamento pede para confirmar ou corrigir.
+   */
+  molde_a_confirmar: boolean;
   peso_nominal_kg: number | null; // nulo = peso variável (PDV)
   embalagens_por_caixa: number | null;
   /** Descrição da derivação (DESCR_DER), ex.: "FRESCATTO CXA 7,5". */

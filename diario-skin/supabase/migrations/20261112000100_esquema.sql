@@ -21,7 +21,8 @@ create table public.perfis (
 create table public.produtos (
   codigo text primary key,                 -- SKU (PROD_DER), ex.: 24616701063781-975
   descricao text not null,
-  molde text check (molde in ('2x1','3x1')),               -- nulo = molde a confirmar (o operador escolhe na OP)
+  molde text check (molde in ('2x1','3x1')),               -- nulo = a planilha não traz o molde (o operador escolhe na OP)
+  molde_a_confirmar boolean not null default false,        -- molde vazio ou herdado de outro SKU do mesmo produto
   peso_nominal_kg numeric check (peso_nominal_kg > 0),     -- nulo = peso variável (PDV)
   embalagens_por_caixa integer check (embalagens_por_caixa > 0),
   derivacao text,                          -- DESCR_DER, ex.: FRESCATTO CXA 7,5

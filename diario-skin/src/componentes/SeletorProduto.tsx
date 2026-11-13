@@ -58,7 +58,7 @@ export function SeletorProduto({ aberto, produtos, aoEscolher, aoEscolherOutro, 
         {encontrados.slice(0, LIMITE).map((p) => (
           <button type="button" key={p.codigo} onClick={() => { setBusca(''); aoEscolher(p); }}>
             <span className="n">{p.descricao}</span>
-            <span className="small muted mono">{p.codigo} · {p.molde ?? 'molde a confirmar'}</span>
+            <span className="small muted mono">{p.codigo} · {p.molde ? `${p.molde}${p.molde_a_confirmar ? ' (a confirmar)' : ''}` : 'molde a escolher'}</span>
             <span className="small muted">
               {p.derivacao ?? 'sem derivação'}
               {p.peso_nominal_kg ? '' : ' · peso variável (PDV)'}

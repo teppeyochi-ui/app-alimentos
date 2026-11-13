@@ -34,7 +34,7 @@ describe('CSV', () => {
     const r = produtosDoCsv('codigo;descricao;molde;peso_nominal_kg;embalagens_por_caixa\nA-1;Produto A;3x1;0,25;12\nB-2;Produto B;4x1;;\n;Sem código;2x1;;\n');
     expect(r.produtos).toEqual([{
       codigo: 'A-1', descricao: 'Produto A', molde: '3x1', peso_nominal_kg: 0.25, embalagens_por_caixa: 12,
-      derivacao: null, peso_caixa_kg: null, especie: null, ativo: true,
+      derivacao: null, peso_caixa_kg: null, especie: null, molde_a_confirmar: false, ativo: true,
     }]);
     expect(r.erros).toHaveLength(2);
   });
@@ -43,8 +43,8 @@ describe('CSV', () => {
     const r = produtosDoCsv('SKU;DESCR_PRO;DESCR_AGP;DESCR_DER;MOLDE;peso_nominal_kg\nA-1;Produto A;SALMON;FRESCATTO CXA 7,5;;0,5\nB-2;Produto B PDV;DOURADO;FRESC CXA PDV PF;3x1;\n');
     expect(r.erros).toEqual([]);
     expect(r.produtos).toEqual([
-      { codigo: 'A-1', descricao: 'Produto A', molde: null, peso_nominal_kg: 0.5, embalagens_por_caixa: 15, derivacao: 'FRESCATTO CXA 7,5', peso_caixa_kg: 7.5, especie: 'SALMON', ativo: true },
-      { codigo: 'B-2', descricao: 'Produto B PDV', molde: '3x1', peso_nominal_kg: null, embalagens_por_caixa: null, derivacao: 'FRESC CXA PDV PF', peso_caixa_kg: null, especie: 'DOURADO', ativo: true },
+      { codigo: 'A-1', descricao: 'Produto A', molde: null, molde_a_confirmar: true, peso_nominal_kg: 0.5, embalagens_por_caixa: 15, derivacao: 'FRESCATTO CXA 7,5', peso_caixa_kg: 7.5, especie: 'SALMON', ativo: true },
+      { codigo: 'B-2', descricao: 'Produto B PDV', molde: '3x1', molde_a_confirmar: false, peso_nominal_kg: null, embalagens_por_caixa: null, derivacao: 'FRESC CXA PDV PF', peso_caixa_kg: null, especie: 'DOURADO', ativo: true },
     ]);
   });
 

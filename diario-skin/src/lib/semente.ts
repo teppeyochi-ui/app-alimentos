@@ -39,7 +39,7 @@ export function embalagensPorCaixaCalculado(pesoCaixaKg: number | null, pesoNomi
 
 /**
  * Linhas de catálogo: codigo;descricao;molde;peso_nominal_kg e, opcionais,
- * embalagens_por_caixa;derivacao;peso_caixa_kg;especie. Molde vazio = a confirmar.
+ * embalagens_por_caixa;derivacao;peso_caixa_kg;especie;molde_a_confirmar. Molde vazio = a confirmar.
  * Sem embalagens_por_caixa, calcula pelo peso da caixa (da coluna ou da derivação).
  */
 export function produtosDoCsv(csv: string): { produtos: Produto[]; erros: string[] } {
@@ -62,6 +62,7 @@ export function produtosDoCsv(csv: string): { produtos: Produto[]; erros: string
       codigo,
       descricao,
       molde: m,
+      molde_a_confirmar: m == null || /^(sim|s|1|true|x)$/i.test(l.molde_a_confirmar ?? ''),
       peso_nominal_kg: pesoNominal,
       embalagens_por_caixa: epc != null ? Math.round(epc) : embalagensPorCaixaCalculado(pesoCaixa, pesoNominal),
       derivacao,

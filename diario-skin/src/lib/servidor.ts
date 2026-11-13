@@ -160,6 +160,7 @@ function produtoDaLinha(l: Linha): Produto {
     codigo: String(l.codigo),
     descricao: String(l.descricao),
     molde: l.molde === '3x1' || l.molde === '2x1' ? l.molde : null,
+    molde_a_confirmar: l.molde_a_confirmar === true || (l.molde !== '3x1' && l.molde !== '2x1'),
     peso_nominal_kg: numero(l.peso_nominal_kg),
     embalagens_por_caixa: numero(l.embalagens_por_caixa),
     derivacao: texto(l.derivacao),

@@ -128,15 +128,23 @@ export async function lerTelas(cliente: Anthropic, fotos: FotoEnviada[]): Promis
   });
   conteudo.push({ type: 'text', text: INSTRUCAO });
 
-  const resposta = await cliente.beta.messages.parse({
-    model: MODELO,
-    max_tokens: 16000,
-    // Se o modelo recusar por política, o servidor da Anthropic tenta de novo no modelo reserva.
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    output_config: { effort: 'medium', format: betaZodOutputFormat(Resposta) },
-    messages: [{ role: 'user', content: conteudo }],
-  });
+  const resposta = await cliente.beta.messages
+    .parse({
+      model: MODELO,
+      max_tokens: 16000,
+      // Se o modelo recusar por política, o servidor da Anthropic tenta de novo no modelo reserva.
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort: 'medium', format: betaZodOutputFormat(Resposta) },
+      messages: [{ role: 'user', content: conteudo }],
+    })
+    .catch((e: unknown) => {
+      // Texto cortado ou fora do formato: o SDK não consegue montar a resposta.
+      if (e instanceof Anthropic.AnthropicError && !(e instanceof Anthropic.APIError)) {
+        throw new ErroLeitura(502, 'Resposta incompleta do modelo.');
+      }
+      throw e;
+    });
 
   if (resposta.stop_reason === 'refusal') throw new ErroLeitura(422, 'O modelo não leu estas fotos.');
   if (resposta.stop_reason === 'max_tokens' || !resposta.parsed_output) {

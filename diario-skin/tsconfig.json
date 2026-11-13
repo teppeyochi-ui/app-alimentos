@@ -15,5 +15,5 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["vite/client", "vite-plugin-pwa/client", "node"]
   },
-  "include": ["src", "testes", "vite.config.ts", "supabase/functions/ler-telas/leitura.ts"]
+  "include": ["src", "testes", "vite.config.ts", "supabase/functions/ler-telas/leitura.ts", "supabase/functions/analisar-op/analise.ts"]
 }

@@ -189,7 +189,8 @@ export function validarEncerramento(op: CamposValidacao, ind: Indicadores): Vali
   if (op.passo_fim == null) faltas.push('passo no fim');
   if (op.caixas == null) faltas.push('caixas');
   if (op.peso_final_kg == null) faltas.push('peso final');
-  if (!op.embalagens_por_caixa && !op.peso_nominal_kg) faltas.push('embalagens por caixa ou peso nominal');
+  // Peso variável (PDV): sem peso nominal, as boas só saem das caixas × embalagens por caixa.
+  if (!op.embalagens_por_caixa && !op.peso_nominal_kg) faltas.push('embalagens por caixa (produto de peso variável)');
 
   const bloqueios: string[] = [];
   if (ind.passos != null && ind.passos <= 0) {

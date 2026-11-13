@@ -1,5 +1,6 @@
 // Carga inicial (seção 6 da especificação): catálogo skin e histórico da
-// planilha. Os mesmos CSVs geram o supabase/seed.sql (ferramentas/gerar-seed.mjs).
+// planilha. Os mesmos CSVs geram o supabase/seed.sql (ferramentas/gerar-sql.mjs).
+// O catálogo vem da planilha de produtos do P&D: SKU, descrição, derivação e molde.
 
 import { lerCsvObjetos } from './csv';
 import { PARAMETROS_VAZIOS } from './constantes';
@@ -18,25 +19,54 @@ export function molde(t: string | undefined): Molde | null {
   return m === '2x1' || m === '3x1' ? m : null;
 }
 
-/** Linhas de catálogo: codigo;descricao;molde;peso_nominal_kg[;embalagens_por_caixa]. */
+/**
+ * Peso nominal da caixa escrito na derivação: "FRESCATTO CXA 7,5" → 7,5;
+ * "FRESC CXA PDV PF" (peso variável) e derivações sem caixa → null.
+ */
+export function pesoCaixaDaDerivacao(derivacao: string | null | undefined): number | null {
+  const m = /\bCXA\s+(\d+(?:[.,]\d+)?)/i.exec(derivacao ?? '');
+  if (!m) return null;
+  const n = Number(m[1].replace(',', '.'));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Embalagens por caixa = peso da caixa ÷ peso nominal, quando a conta fecha num número inteiro. */
+export function embalagensPorCaixaCalculado(pesoCaixaKg: number | null, pesoNominalKg: number | null): number | null {
+  if (!pesoCaixaKg || !pesoNominalKg) return null;
+  const q = pesoCaixaKg / pesoNominalKg;
+  return q >= 1 && Math.abs(q - Math.round(q)) < 0.02 ? Math.round(q) : null;
+}
+
+/**
+ * Linhas de catálogo: codigo;descricao;molde;peso_nominal_kg e, opcionais,
+ * embalagens_por_caixa;derivacao;peso_caixa_kg;especie. Molde vazio = a confirmar.
+ * Sem embalagens_por_caixa, calcula pelo peso da caixa (da coluna ou da derivação).
+ */
 export function produtosDoCsv(csv: string): { produtos: Produto[]; erros: string[] } {
   const produtos: Produto[] = [];
   const erros: string[] = [];
   lerCsvObjetos(csv).forEach((l, i) => {
-    const codigo = texto(l.codigo);
-    const descricao = texto(l.descricao);
+    const codigo = texto(l.codigo ?? l.sku);
+    const descricao = texto(l.descricao ?? l.descr_pro);
+    const moldeTexto = texto(l.molde);
     const m = molde(l.molde);
-    if (!codigo || !descricao || !m) {
-      erros.push(`Linha ${i + 2}: precisa de código, descrição e molde (2x1 ou 3x1).`);
+    if (!codigo || !descricao || (moldeTexto && !m)) {
+      erros.push(`Linha ${i + 2}: precisa de código e descrição; o molde, se vier, deve ser 2x1 ou 3x1.`);
       return;
     }
+    const derivacao = texto(l.derivacao ?? l.descr_der);
+    const pesoNominal = numero(l.peso_nominal_kg);
+    const pesoCaixa = numero(l.peso_caixa_kg) ?? pesoCaixaDaDerivacao(derivacao);
     const epc = numero(l.embalagens_por_caixa);
     produtos.push({
       codigo,
       descricao,
       molde: m,
-      peso_nominal_kg: numero(l.peso_nominal_kg),
-      embalagens_por_caixa: epc != null ? Math.round(epc) : null,
+      peso_nominal_kg: pesoNominal,
+      embalagens_por_caixa: epc != null ? Math.round(epc) : embalagensPorCaixaCalculado(pesoCaixa, pesoNominal),
+      derivacao,
+      peso_caixa_kg: pesoCaixa,
+      especie: texto(l.especie ?? l.descr_agp),
       ativo: true,
     });
   });
@@ -82,6 +112,7 @@ export function historicoDoCsv(csv: string): Op[] {
     alterado_por: null,
     alterado_em: null,
     fechada_em: null,
+    analise_ia: null,
     retrabalho: null,
     paradas: [],
     fotos: [],

@@ -43,7 +43,7 @@ const {
   }
   async function escolherProduto(busca) {
     await p.getByRole('button', { name: /^Produto/ }).click();
-    await p.getByLabel('Buscar por código ou nome').fill(busca);
+    await p.getByLabel('Buscar por SKU, nome ou derivação').fill(busca);
     await p.locator('.lista-produtos button').first().click();
   }
 
@@ -57,16 +57,36 @@ const {
   await escolherProduto('16507014073621-011');
   verificar((await campo('Molde').inputValue()) === '3x1', 'molde 3x1');
   verificar((await campo('Peso nominal (kg)').inputValue()) === '0,2', 'peso nominal 0,2 kg');
-  verificar((await p.getByText(/^Do catálogo:/).innerText()).includes('molde 3x1 (3 bandejas por passo) · peso nominal 200 g'), 'linha de confirmação do catálogo');
+  const doCatalogo = await p.getByText(/^Do catálogo:/).innerText();
+  verificar(doCatalogo.includes('SKU 16507014073621-011') && doCatalogo.includes('peso nominal 200 g') && doCatalogo.includes('molde 3x1 (3 bandejas por passo)'), 'linha de confirmação do catálogo');
+  verificar(doCatalogo.includes('derivação FRESCATTO CXA 05') && doCatalogo.includes('caixa de 5 kg'), 'derivação e peso da caixa vêm da planilha de produtos');
+  verificar((await campo('Embalagens por caixa').inputValue()) === '25', 'peso fixo: embalagens por caixa calculado (5 kg ÷ 200 g = 25)');
   await captura('1-identificacao');
   await conferirLayout('Lançar OP');
+
+  console.log('Produto de peso variável (PDV): embalagens por caixa é do operador');
+  await escolherProduto('06042002001341-1058');
+  // Os campos numéricos acompanham a OP logo depois da escolha: espera o valor chegar.
+  const esvaziou = (id) => p.waitForFunction((i) => document.getElementById(i)?.value === '', id, { timeout: 3000 }).then(() => true, () => false);
+  verificar(await esvaziou('f-pn'), 'PDV: sem peso nominal');
+  verificar(await esvaziou('f-epc'), 'PDV: embalagens por caixa vazio');
+  verificar(await p.getByText('Produto de peso variável (PDV): informe quantas embalagens vão em cada caixa.').count() === 1, 'PDV: pede as embalagens por caixa');
+  await campo('Embalagens por caixa').fill('12');
+  verificar(await p.getByText('Produto de peso variável (PDV): informe quantas embalagens vão em cada caixa.').count() === 0, 'PDV: aviso some depois de informar');
+  await p.getByRole('button', { name: /^Produto/ }).click();
+  await p.getByLabel('Buscar por SKU, nome ou derivação').fill('CXA 7,5 PESCADA');
+  verificar(await p.locator('.lista-produtos button').count() >= 2, 'busca por derivação acha a pescada da caixa de 7,5 kg');
+  await p.locator('dialog[open]').getByRole('button', { name: 'Fechar' }).click();
+  await escolherProduto('16507014073621-011');
 
   console.log('Critério 4: lançar sem internet (modo avião)');
   await ctx.setOffline(true);
   await p.getByRole('button', { name: 'Nova OP' }).click();
   await escolherProduto('24616701063781-975');
   verificar((await campo('Molde').inputValue()) === '2x1', 'salmão 600 g: molde 2x1');
+  verificar((await campo('Embalagens por caixa').inputValue()) === '15', 'salmão 600 g: caixa de 9 kg = 15 embalagens');
   await campo('OP').fill('20109999');
+  // A OP de teste da especificação usa 9 embalagens por caixa.
   await campo('Embalagens por caixa').fill('9');
   await campo('Hora de início').fill('08:00');
   await campo('Temp. do produto (°C)').fill('18');
@@ -188,6 +208,33 @@ const {
     await p.getByRole('button', { name: secao }).click();
     await conferirLayout('Administração: ' + secao.toLowerCase());
   }
+
+  console.log('Orientação: a configuração está boa?');
+  await p.goto(base + '#lancar');
+  await p.getByRole('button', { name: 'Nova OP' }).click();
+  await escolherProduto('24616701063781-975');
+  for (let i = 0; i < 4; i++) await p.getByRole('button', { name: 'Mais um: Sem vácuo' }).tap();
+  await p.getByRole('button', { name: 'Mais um: Rugas ou ar preso' }).tap();
+  await p.getByRole('link', { name: /Ver orientação/ }).click();
+  await p.getByRole('heading', { name: 'Configuração × referência' }).waitFor();
+  const orientacao = (await p.locator('main').innerText()).replace(/\s+/g, ' ');
+  verificar(orientacao.includes('a melhor de 1 OP encerrada deste produto'), 'referência: a OP encerrada do mesmo produto');
+  verificar(orientacao.includes('1 parâmetro diferente da faixa das melhores OPs: T2'), 'aponta o T2 fora da faixa da melhor OP');
+  verificar(orientacao.includes('melhores usaram 1,2 s'), 'mostra o valor usado na melhor OP (T2 = 1,2 s)');
+  verificar(orientacao.includes('Melhor resultado já registrado deste produto: 82,5%'), 'mostra o melhor aproveitamento registrado');
+  verificar(/Sem vácuo 4 emb\./.test(orientacao) && orientacao.indexOf('Sem vácuo 4 emb.') < orientacao.indexOf('Rugas ou ar preso 1 emb.'), 'defeitos do mais frequente para o menos');
+  verificar(orientacao.includes('Diminuir Consigna vácuo (agora 40 mbar'), 'regra do defeito cita o parâmetro e o valor atual');
+  verificar(orientacao.includes('A avaliação por IA só funciona com o servidor ligado'), 'modo local: avisa que a IA precisa do servidor');
+  await p.locator('.aviso').first().waitFor({ state: 'detached', timeout: 8000 }).catch(() => {});
+  await captura('9-orientacao');
+  await p.locator('#t-cfg').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await captura('9b-orientacao-configuracao');
+  await p.locator('#t-def').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await captura('10-orientacao-defeitos');
+  await conferirLayout('Orientação');
+  await p.getByRole('link', { name: 'Orientação', exact: true }).click();
+  await p.getByRole('heading', { name: 'Configuração × referência' }).waitFor();
+  verificar((await p.getByLabel('OP', { exact: true }).locator('option:checked').innerText()).includes('em andamento'), 'a aba Orientação abre na OP que estava no lançamento');
 
   console.log('Operador × OP fechada (o aplicativo espelha as políticas do banco)');
   // No modo local o usuário é administrador; a regra do operador é coberta pelos testes de unidade e do banco.

@@ -1,7 +1,7 @@
 // Lançar OP (seção 8.1): uma página com rolagem, em cinco blocos, na ordem em
 // que o trabalho acontece, com o resultado calculado ao vivo.
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { BarraDestino, CampoNumero, Dialogo, Farol, Kpi, LegendaDestino } from '../componentes/Basicos';
 import { Fotos } from '../componentes/Fotos';
 import { SeletorProduto } from '../componentes/SeletorProduto';
@@ -13,11 +13,12 @@ import {
 } from '../lib/constantes';
 import { MODO_LOCAL } from '../lib/config';
 import { blobDaFoto, reduzirFoto } from '../lib/fotos';
-import { agoraHHMM, dataBR, dataHoraBR, gramas, horaCurta, kg, num, pct } from '../lib/formato';
+import { agoraHHMM, dataBR, dataHoraBR, gramas, horaCurta, kg, num, numCampo, pct } from '../lib/formato';
 import {
   adicionarFoto, adicionarParada, alterarOp, avisar, contarRetrabalho, descarregar, encerrarOp, escolherProduto,
   lerEstado, lerServidor, novaOp, podeEditar, removerFoto, removerParada, useLoja, type Estado,
 } from '../lib/loja';
+import { embalagensPorCaixaCalculado } from '../lib/semente';
 import { classificar } from '../lib/servidor';
 import { sincronizar } from '../lib/sincronizacao';
 import type { Aparencia, ChaveParametro, Molde, Op, OpLocal } from '../lib/tipos';
@@ -83,6 +84,7 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
   const [outroAberto, setOutroAberto] = useState(false);
   const [lidos, setLidos] = useState<ChaveParametro[]>([]);
   const [lendo, setLendo] = useState(false);
+  const lendoAgora = useRef(false);
   const [leitura, setLeitura] = useState<Mensagem | null>(null);
   const [processando, setProcessando] = useState(0);
   const [paradaMotivo, setParadaMotivo] = useState(MOTIVOS_PARADA[0]);
@@ -101,6 +103,9 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
   const fotosTela = op.fotos.filter((f) => f.tipo === 'tela');
   const fotosProduto = op.fotos.filter((f) => f.tipo === 'produto');
   const mostrarNome = op.produto_codigo == null && (outroAberto || op.produto_descricao !== '');
+  // No peso variável (PDV) as boas só podem ser contadas pelas caixas: embalagens por caixa é obrigatório.
+  const faltaEpc = op.produto_descricao !== '' && !op.peso_nominal_kg && !op.embalagens_por_caixa;
+  const epcDaCaixa = embalagensPorCaixaCalculado(produto?.peso_caixa_kg ?? null, op.peso_nominal_kg);
   const ehRascunho = e.rascunho?.id === op.id;
 
   // ---------------------------------------------------------------- fotos
@@ -108,10 +113,11 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
   async function receberFotos(arquivos: FileList | null, tipo: 'tela' | 'produto') {
     if (!arquivos?.length) return;
     const lista = [...arquivos];
+    let entraram = 0;
     setProcessando((n) => n + lista.length);
     for (const arquivo of lista) {
       try {
-        await adicionarFoto(op.id, tipo, await reduzirFoto(arquivo));
+        if (await adicionarFoto(op.id, tipo, await reduzirFoto(arquivo))) entraram++;
       } catch (erro) {
         console.error(erro);
         avisar('Não foi possível ler esta foto. Tente tirar de novo.', 'erro');
@@ -119,16 +125,21 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
         setProcessando((n) => n - 1);
       }
     }
+    // Foto da tela: os valores são lidos na hora, sem outro botão.
+    if (tipo === 'tela' && entraram > 0 && !MODO_LOCAL) void lerDasFotos();
   }
 
   async function lerDasFotos() {
     const servidor = lerServidor();
-    if (!servidor || lendo) return;
+    if (!servidor || lendoAgora.current) return;
+    lendoAgora.current = true;
     setLendo(true);
-    setLeitura({ tipo: 'info', texto: 'Lendo as fotos… pode levar até um minuto.' });
+    setLeitura({ tipo: 'info', texto: 'Lendo os valores da foto… pode levar até um minuto.' });
     try {
-      // Até 3 fotos, as mais recentes (uma por tela: 412, 414 e 417).
-      const escolhidas = fotosTela.slice(-3);
+      // Sempre a OP como está agora (a foto acabou de entrar). Até 3 fotos, as mais recentes
+      // (uma por tela: 412, 414 e 417).
+      const atual = lerEstado().ops.find((o) => o.id === op.id) ?? op;
+      const escolhidas = atual.fotos.filter((f) => f.tipo === 'tela').slice(-3);
       const blobs: Blob[] = [];
       const usadas: typeof escolhidas = [];
       for (const f of escolhidas) {
@@ -152,10 +163,11 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
         return;
       }
       const telasPorFoto = new Map(usadas.map((f, i) => [f.id, r.telas[i]]));
+      const naHoraDeGravar = lerEstado().ops.find((o) => o.id === op.id) ?? atual;
       alterarOp(op.id, {
         ...validos,
         parametros_origem: 'lido_da_foto',
-        fotos: op.fotos.map((f) => {
+        fotos: naHoraDeGravar.fotos.map((f) => {
           const tela = telasPorFoto.get(f.id);
           return tela === 412 || tela === 414 || tela === 417 ? { ...f, tela_numero: tela } : f;
         }),
@@ -180,6 +192,7 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
           : `${falha.message || 'Não consegui ler agora.'} Digite os valores ou tente de novo.`,
       });
     } finally {
+      lendoAgora.current = false;
       setLendo(false);
     }
   }
@@ -265,14 +278,23 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
               <span className="n" id="v-produto">
                 {op.produto_codigo ? op.produto_descricao : mostrarNome ? 'Outro (fora do catálogo)' : 'Escolher produto'}
               </span>
-              {op.produto_codigo && <span className="small mono">{op.produto_codigo} · {op.molde}</span>}
-              {!op.produto_codigo && !mostrarNome && <span className="small">busca por código ou nome</span>}
+              {op.produto_codigo && <span className="small mono">SKU {op.produto_codigo} · {op.molde}</span>}
+              {produto?.derivacao && <span className="small">{produto.derivacao}</span>}
+              {!op.produto_codigo && !mostrarNome && <span className="small">busca por SKU, nome ou derivação</span>}
             </button>
             {produto && (
               <p className="small">
-                Do catálogo: código {produto.codigo} · molde {produto.molde} ({produto.molde === '3x1' ? 3 : 2} bandejas por passo) ·{' '}
-                {produto.peso_nominal_kg ? `peso nominal ${gramas(produto.peso_nominal_kg)}` : 'peso variável (PDV)'}
+                Do catálogo: SKU {produto.codigo}
+                {produto.derivacao ? ` · derivação ${produto.derivacao}` : ''} ·{' '}
+                {produto.peso_caixa_kg ? `caixa de ${numCampo(produto.peso_caixa_kg)} kg` : 'caixa de peso variável'} ·{' '}
+                {produto.peso_nominal_kg ? `peso nominal ${gramas(produto.peso_nominal_kg)}` : 'peso variável (PDV)'} ·{' '}
+                {produto.molde ? `molde ${produto.molde} (${produto.molde === '3x1' ? 3 : 2} bandejas por passo)` : 'molde a confirmar'}
               </p>
+            )}
+            {produto && !produto.molde && (
+              <div className="notice warn" role="status">
+                Este SKU ainda não tem molde no catálogo. Confira abaixo se o molde é 2x1 ou 3x1.
+              </div>
             )}
           </div>
           <div className="grid">
@@ -308,10 +330,15 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
               Peso nominal (kg)
               <CampoNumero id={idc('pn')} valor={op.peso_nominal_kg} aoMudar={(v) => mudar({ peso_nominal_kg: v })} min={0} max={50} placeholder="vazio = variável" />
             </label>
-            <label htmlFor={idc('epc')}>
-              Embalagens por caixa
+            <div className={faltaEpc ? 'campo campo-erro' : 'campo'}>
+              <label htmlFor={idc('epc')}>Embalagens por caixa</label>
               <CampoNumero id={idc('epc')} valor={op.embalagens_por_caixa} aoMudar={(v) => mudar({ embalagens_por_caixa: v })} inteiro min={1} max={500} />
-            </label>
+              {faltaEpc ? (
+                <span className="dica-erro">Produto de peso variável (PDV): informe quantas embalagens vão em cada caixa.</span>
+              ) : epcDaCaixa != null && op.embalagens_por_caixa === epcDaCaixa ? (
+                <span className="small muted">caixa de {numCampo(produto!.peso_caixa_kg)} kg ÷ {gramas(op.peso_nominal_kg)}</span>
+              ) : null}
+            </div>
             <label>
               Lote da matéria-prima
               <input value={op.lote_mp ?? ''} onChange={(ev) => mudar({ lote_mp: texto(ev.target.value) })} />
@@ -372,8 +399,10 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
         <section className="card" aria-labelledby="t-maq">
           <div className="sec-h"><h3 id="t-maq">Configuração da máquina</h3><span className="step">3 · fotos das telas 412, 414 e 417</span></div>
           <p className="small muted">
-            Fotografe as três telas. “Ler valores das fotos” preenche os campos; confira antes de encerrar.
-            Campos em laranja estão diferentes da receita padrão.
+            {MODO_LOCAL
+              ? 'Fotografe as três telas e digite os valores. A leitura automática da foto começa quando o servidor for ligado.'
+              : 'Fotografe as três telas: os valores são lidos da foto e preenchidos na hora. Confira os campos com contorno azul antes de encerrar.'}
+            {' '}Campos em laranja estão diferentes da receita padrão.
           </p>
           <div className="row">
             <span className="filebtn">
@@ -385,7 +414,7 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
             </span>
             {!MODO_LOCAL && fotosTela.length > 0 && (
               <button type="button" onClick={() => void lerDasFotos()} disabled={lendo}>
-                {lendo ? 'Lendo…' : 'Ler valores das fotos'}
+                {lendo ? 'Lendo…' : 'Ler as fotos de novo'}
               </button>
             )}
             <button
@@ -417,6 +446,9 @@ function Formulario({ op, e }: { op: OpLocal; e: Estado }) {
               </div>
             ))}
           </div>
+          {!ehRascunho && (
+            <a className="botao-link" href={`#orientacao/${op.id}`}>Ver orientação: esta configuração está boa?</a>
+          )}
           {alterados.length > 0 && (
             <p className="small muted">
               Diferente da padrão:{' '}

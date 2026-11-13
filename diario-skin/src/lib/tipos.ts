@@ -22,11 +22,18 @@ export interface Perfil {
 }
 
 export interface Produto {
-  codigo: string;
+  codigo: string; // SKU (PROD_DER)
   descricao: string;
-  molde: Molde;
+  /** null = molde ainda não confirmado para este SKU: o operador escolhe no lançamento. */
+  molde: Molde | null;
   peso_nominal_kg: number | null; // nulo = peso variável (PDV)
   embalagens_por_caixa: number | null;
+  /** Descrição da derivação (DESCR_DER), ex.: "FRESCATTO CXA 7,5". */
+  derivacao: string | null;
+  /** Peso nominal da caixa, tirado da derivação; nulo = caixa de peso variável (PDV). */
+  peso_caixa_kg: number | null;
+  /** Agrupamento do produto (DESCR_AGP), ex.: "SALMON". */
+  especie: string | null;
   ativo: boolean;
 }
 
@@ -59,6 +66,22 @@ export interface Foto {
 
 export type Retrabalho = Record<MotivoRetrabalho, number>;
 
+export type AcaoSugerida = 'aumentar' | 'diminuir' | 'manter' | 'verificar';
+
+/** Avaliação da foto do produto final feita pela IA (função analisar-op). */
+export interface AnaliseIa {
+  em: string; // ISO
+  /** 0 (reprovado) a 10 (perfeito); null = a foto não permitiu avaliar. */
+  nota_aparencia: number | null;
+  defeitos: { tipo: MotivoRetrabalho | 'liquido'; gravidade: 'leve' | 'moderado' | 'grave'; descricao: string }[];
+  diagnostico: string;
+  sugestoes: { parametro: ChaveParametro | null; acao: AcaoSugerida; valor_sugerido: number | null; motivo: string }[];
+  confianca: 'baixa' | 'media' | 'alta';
+  limitacoes: string;
+  /** Fotos do produto que foram avaliadas. */
+  fotos: string[];
+}
+
 export interface Op extends Parametros {
   id: string;
   origem: Origem;
@@ -90,6 +113,8 @@ export interface Op extends Parametros {
   alterado_por: string | null;
   alterado_em: string | null; // hora da última edição (define quem vence no conflito)
   fechada_em: string | null;
+  /** Última avaliação da foto do produto pela IA; null = não avaliada. */
+  analise_ia: AnaliseIa | null;
   /** null = retrabalho não registrado (histórico da planilha). */
   retrabalho: Retrabalho | null;
   paradas: Parada[];

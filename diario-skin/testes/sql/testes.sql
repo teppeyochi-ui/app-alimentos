@@ -91,7 +91,11 @@ update public.perfis set ativo = true where id = '33333333-3333-4333-8333-333333
 
 -- ------------------------------------------------------------------ carga inicial
 \echo 'Carga inicial'
-select teste.igual('91 produtos no catálogo', (select count(*) from public.produtos), 91::bigint);
+select teste.igual('118 SKUs no catálogo', (select count(*) from public.produtos), 118::bigint);
+select teste.igual('derivação e caixa do 10068093246591-964', (select derivacao || ' / ' || peso_caixa_kg || ' / ' || embalagens_por_caixa from public.produtos where codigo = '10068093246591-964'), 'FRESCATTO CXA 7,5 / 7.5 / 15');
+select teste.igual('PDV fica sem embalagens por caixa', (select count(*) from public.produtos where peso_nominal_kg is null and embalagens_por_caixa is not null), 0::bigint);
+select teste.igual('6 SKUs com o molde a confirmar', (select count(*) from public.produtos where molde is null), 6::bigint);
+select teste.igual('todo SKU tem derivação e espécie', (select count(*) from public.produtos where derivacao is null or especie is null), 0::bigint);
 select teste.igual('2 moldes', (select count(*) from public.moldes), 2::bigint);
 select teste.igual('1 receita padrão', (select count(*) from public.receitas_padrao), 1::bigint);
 select teste.igual('15 produções do histórico', (select count(*) from public.ops where origem = 'planilha' and status = 'fechada'), 15::bigint);
@@ -115,7 +119,7 @@ select teste.igual('todas as OPs aparecem na view', (select count(*) from public
 set role authenticated;
 select set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', false);
 
-select teste.igual('operador lê o catálogo', (select count(*) from public.produtos), 91::bigint);
+select teste.igual('operador lê o catálogo', (select count(*) from public.produtos), 118::bigint);
 select teste.igual('salvar_op grava a OP nova', public.salvar_op(teste.op(teste.t(0))) ->> 'resultado', 'gravada');
 select teste.igual('reenviar a mesma edição não muda nada', public.salvar_op(teste.op(teste.t(0))) ->> 'resultado', 'igual');
 select teste.igual('edição mais velha que a do servidor é ignorada', public.salvar_op(teste.op(teste.t(-5), '{"caixas": 1}')) ->> 'resultado', 'ignorada');
@@ -157,6 +161,20 @@ select teste.igual('parada removida saiu', (select count(*) from public.op_parad
 select teste.igual('parada alterada', (select minutos from public.op_paradas), 9);
 select teste.igual('foto que não veio no envio continua lá (fotos se somam)', (select count(*) from public.op_fotos), 2::bigint);
 
+\echo 'Avaliação da foto do produto pela IA'
+select teste.igual('OP sem avaliação tem nota nula na view', (select nota_aparencia_ia from public.ops_indicadores where origem = 'diario'), null::numeric);
+select teste.igual('avaliação entra junto com a OP', public.salvar_op(teste.op(teste.t(6), jsonb_build_object(
+  'paradas', '[]'::jsonb, 'fotos', '[]'::jsonb,
+  'analise_ia', jsonb_build_object('em', teste.t(6), 'nota_aparencia', 7.5, 'diagnostico', 'Filme bem aderido; ruga leve num canto.',
+    'defeitos', jsonb_build_array(jsonb_build_object('tipo', 'ruga', 'gravidade', 'leve', 'descricao', 'canto inferior')),
+    'sugestoes', '[]'::jsonb, 'confianca', 'media', 'limitacoes', '', 'fotos', jsonb_build_array('cccccccc-0000-4000-8000-000000000002'))
+))) ->> 'resultado', 'gravada');
+select teste.igual('nota da IA na view', (select nota_aparencia_ia from public.ops_indicadores where origem = 'diario'), 7.5);
+select teste.igual('diagnóstico guardado na OP', (select analise_ia ->> 'confianca' from public.ops where origem = 'diario'), 'media');
+select teste.igual('avaliação que não é objeto é descartada', public.salvar_op(teste.op(teste.t(7), jsonb_build_object(
+  'paradas', '[]'::jsonb, 'fotos', '[]'::jsonb, 'analise_ia', '"texto solto"'::jsonb))) ->> 'resultado', 'gravada');
+select teste.igual('nota volta a ser nula', (select nota_aparencia_ia from public.ops_indicadores where origem = 'diario'), null::numeric);
+
 select teste.igual('operador encerra a OP', public.salvar_op(teste.op(teste.t(10), '{"status":"fechada"}')) ->> 'resultado', 'gravada');
 select teste.igual('status fechada', (select status from public.ops where origem = 'diario'), 'fechada');
 select teste.igual('fechada_em preenchido', (select fechada_em is not null from public.ops where origem = 'diario'), true);
@@ -175,7 +193,7 @@ select teste.erro('operador não altera o histórico da planilha', $$select publ
 select teste.erro('operador não cancela', $$select public.salvar_op(teste.op(teste.t(17), '{"status": "cancelada"}'))$$, '42501');
 select teste.erro('operador não cria OP de origem planilha', $$select public.salvar_op(teste.op(teste.t(18), '{"id": "aaaaaaaa-0000-4000-8000-000000000009", "origem": "planilha", "paradas": [], "fotos": []}'))$$, '42501');
 update public.produtos set embalagens_por_caixa = 6 where codigo = '24616701063781-975';
-select teste.igual('operador não altera o catálogo', (select embalagens_por_caixa from public.produtos where codigo = '24616701063781-975'), null::integer);
+select teste.igual('operador não altera o catálogo', (select embalagens_por_caixa from public.produtos where codigo = '24616701063781-975'), 15);
 select teste.erro('operador não inclui receita padrão', $$insert into public.receitas_padrao (t_dome) values (200)$$, '42501');
 update public.perfis set papel = 'admin' where id = '33333333-3333-4333-8333-333333333333';
 select teste.igual('operador não se promove', (select papel from public.perfis where id = '33333333-3333-4333-8333-333333333333'), 'operador');
@@ -234,7 +252,7 @@ select teste.igual('status fechada de novo', (select status from public.ops wher
 update public.produtos set embalagens_por_caixa = 9 where codigo = '24616701063781-975';
 select teste.igual('admin altera o catálogo', (select embalagens_por_caixa from public.produtos where codigo = '24616701063781-975'), 9);
 insert into public.produtos (codigo, descricao, molde) values ('99999999999999-001', 'PRODUTO NOVO SKIN', '3x1');
-select teste.igual('admin inclui produto', (select count(*) from public.produtos), 92::bigint);
+select teste.igual('admin inclui produto', (select count(*) from public.produtos), 119::bigint);
 update public.moldes set filme_tampa_kg_bdj = 0.0070250 where molde = '2x1';
 select teste.igual('admin altera peso de filme', (select filme_tampa_kg_bdj from public.moldes where molde = '2x1'), 0.0070250);
 insert into public.receitas_padrao (vigente_desde, t_dome, t_pre, t1, t2, t4, t5, t6, t7, p_vent, sp, tx, tmax)

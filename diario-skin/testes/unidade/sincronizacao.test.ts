@@ -4,8 +4,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { bancoLocal } from '../../src/lib/banco-local';
 import {
   adicionarFoto, adicionarParada, alterarOp, contarRetrabalho, definirPerfil, descarregar, encerrarOp, escolherProduto,
-  iniciarLoja, lerEstado, novaOp, removerFoto, removerParada,
+  VERSAO_SEMENTE, iniciarLoja, lerEstado, novaOp, removerFoto, removerParada,
 } from '../../src/lib/loja';
+import { calcular, validarEncerramento } from '../../src/lib/calc';
 import { reiniciarSincronizacao, sincronizar } from '../../src/lib/sincronizacao';
 import type { Perfil, Produto } from '../../src/lib/tipos';
 import { ServidorFalso } from './servidor-falso';
@@ -13,7 +14,7 @@ import { ServidorFalso } from './servidor-falso';
 const OPERADOR: Perfil = { id: '33333333-3333-4333-8333-333333333333', nome: 'Operador', papel: 'operador', ativo: true };
 const SALMAO: Produto = {
   codigo: '24616701063781-975', descricao: 'F. SALMON PREM PEDACOS S/E 600GR SKIN PREMIUM', molde: '2x1',
-  peso_nominal_kg: 0.6, embalagens_por_caixa: 9, ativo: true,
+  peso_nominal_kg: 0.6, embalagens_por_caixa: 9, derivacao: null, peso_caixa_kg: null, especie: 'SALMON', ativo: true,
 };
 const foto = () => new Blob([new Uint8Array(2048)], { type: 'image/jpeg' });
 
@@ -233,11 +234,45 @@ describe('modo local (sem servidor)', () => {
     globalThis.indexedDB = new IDBFactory();
     await iniciarLoja({ servidor: null });
     const e = lerEstado();
-    expect(e.produtos).toHaveLength(91);
+    expect(e.produtos).toHaveLength(118);
     expect(e.ops.filter((o) => o.origem === 'planilha')).toHaveLength(15);
     expect(e.receitas).toHaveLength(1);
     expect(e.perfil?.papel).toBe('admin');
     await iniciarLoja({ servidor: null }); // de novo: não duplica
     expect(lerEstado().ops).toHaveLength(15);
+  });
+
+  it('aparelho com o catálogo antigo recebe os SKUs e campos novos sem perder o que já tinha', async () => {
+    await bancoLocal.fechar();
+    globalThis.indexedDB = new IDBFactory();
+    // Como a versão anterior gravava: 2 produtos, sem derivação, um deles com embalagens por caixa informada e inativo.
+    await bancoLocal.gravar('produtos', [
+      { codigo: '24616701063781-975', descricao: 'F. SALMON PREM PEDACOS S/E 600GR SKIN PREMIUM', molde: '2x1', peso_nominal_kg: 0.6, embalagens_por_caixa: 12, ativo: false },
+      { codigo: 'XX-1', descricao: 'PRODUTO INCLUÍDO NO APARELHO', molde: '3x1', peso_nominal_kg: null, embalagens_por_caixa: null, ativo: true },
+    ]);
+    await iniciarLoja({ servidor: null });
+    const produtos = lerEstado().produtos;
+    expect(produtos).toHaveLength(119); // os 118 da planilha + o incluído no aparelho
+    expect(produtos.find((p) => p.codigo === '24616701063781-975')).toMatchObject({
+      derivacao: 'FRESCATTO CXA 09', peso_caixa_kg: 9, especie: 'SALMON', embalagens_por_caixa: 12, ativo: false,
+    });
+    expect(produtos.find((p) => p.codigo === 'XX-1')).toMatchObject({ derivacao: null, molde: '3x1' });
+    expect(await bancoLocal.ler('versao_semente')).toBe(VERSAO_SEMENTE);
+  });
+
+  it('escolher produto: peso fixo preenche embalagens por caixa; PDV deixa vazio; SKU sem molde mantém o da OP', async () => {
+    await bancoLocal.fechar();
+    globalThis.indexedDB = new IDBFactory();
+    await iniciarLoja({ servidor: null });
+    const produtos = lerEstado().produtos;
+    const { id } = novaOp();
+    escolherProduto(id, produtos.find((p) => p.codigo === '10068093246591-964')!); // 500 g, caixa de 7,5 kg
+    expect(lerEstado().ops.find((o) => o.id === id)).toMatchObject({ molde: '2x1', peso_nominal_kg: 0.5, embalagens_por_caixa: 15 });
+    escolherProduto(id, produtos.find((p) => p.codigo === '06042002001341-1058')!); // PDV
+    expect(lerEstado().ops.find((o) => o.id === id)).toMatchObject({ molde: '3x1', peso_nominal_kg: null, embalagens_por_caixa: null });
+    escolherProduto(id, produtos.find((p) => p.codigo === '0938907200103M-815')!); // sem molde no catálogo
+    expect(lerEstado().ops.find((o) => o.id === id)).toMatchObject({ molde: '3x1', produto_codigo: '0938907200103M-815' });
+    const op = lerEstado().ops.find((o) => o.id === id)!;
+    expect(validarEncerramento(op, calcular(op, lerEstado().moldes)).faltas).toContain('embalagens por caixa (produto de peso variável)');
   });
 });

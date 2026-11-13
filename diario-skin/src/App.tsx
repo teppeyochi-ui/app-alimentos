@@ -12,18 +12,19 @@ import { sincronizar } from './lib/sincronizacao';
 import { AguardandoLiberacao, Entrar } from './telas/Entrar';
 import { Lancar } from './telas/Lancar';
 
-// O painel e a administração carregam só quando abertos (o celular do operador não precisa deles).
+// As outras abas carregam só quando abertas.
+const Orientacao = lazy(() => import('./telas/Orientacao'));
 const Painel = lazy(() => import('./telas/Painel'));
 const Admin = lazy(() => import('./telas/Admin'));
 
-type Tela = 'lancar' | 'painel' | 'admin';
+type Tela = 'lancar' | 'orientacao' | 'painel' | 'admin';
 interface Rota { tela: Tela; id: string | null }
 
 const CHAVE_OP = 'diario-skin:op';
 
 function lerRota(): Rota {
   const [tela, id] = window.location.hash.replace(/^#\/?/, '').split('/');
-  if (tela === 'painel' || tela === 'admin') return { tela, id: id || null };
+  if (tela === 'painel' || tela === 'admin' || tela === 'orientacao') return { tela, id: id || null };
   return { tela: 'lancar', id: tela === 'lancar' ? id || null : null };
 }
 
@@ -42,6 +43,13 @@ function useRota(): Rota {
 }
 
 const PAPEIS = { operador: 'Operador', pd: 'P&D', admin: 'Administrador' } as const;
+
+const ABAS: { tela: Tela; nome: string; curto: string }[] = [
+  { tela: 'lancar', nome: 'Lançar OP', curto: 'Lançar' },
+  { tela: 'orientacao', nome: 'Orientação', curto: 'Orientar' },
+  { tela: 'painel', nome: 'Painel P&D', curto: 'Painel' },
+  { tela: 'admin', nome: 'Administração', curto: 'Admin' },
+];
 
 function resumoSync(e: Estado): { classe: string; texto: string } {
   const pendentes = quantasPendentes(e);
@@ -91,6 +99,11 @@ export function App() {
 
   const perfil = e.perfil;
   const ehAdmin = perfil.papel === 'admin';
+  // A orientação abre na OP que está no lançamento (ou na última aberta neste aparelho).
+  let opOrientacao = rota.tela === 'orientacao' ? rota.id : null;
+  if (rota.tela === 'orientacao' && !opOrientacao) {
+    try { opOrientacao = localStorage.getItem(CHAVE_OP); } catch { /* sem armazenamento */ }
+  }
   const tela: Tela = rota.tela === 'admin' && !ehAdmin ? 'lancar' : rota.tela;
   const sync = resumoSync(e);
   const pendentes = quantasPendentes(e);
@@ -108,9 +121,13 @@ export function App() {
           </button>
         </div>
         <nav className="abas" aria-label="Seções">
-          <a href="#lancar" aria-current={tela === 'lancar' ? 'page' : undefined}>Lançar OP</a>
-          <a href="#painel" aria-current={tela === 'painel' ? 'page' : undefined}>Painel P&D</a>
-          {ehAdmin && <a href="#admin" aria-current={tela === 'admin' ? 'page' : undefined}>Administração</a>}
+          {/* No celular estreito as abas usam o nome curto; o nome completo fica para o leitor de tela. */}
+          {ABAS.filter((a) => a.tela !== 'admin' || ehAdmin).map((a) => (
+            <a key={a.tela} href={`#${a.tela}`} aria-label={a.nome} aria-current={tela === a.tela ? 'page' : undefined}>
+              <span className="longo" aria-hidden="true">{a.nome}</span>
+              <span className="curto" aria-hidden="true">{a.curto}</span>
+            </a>
+          ))}
         </nav>
       </header>
 
@@ -122,7 +139,8 @@ export function App() {
       )}
       {MODO_LOCAL && (
         <div className="notice warn" role="status">
-          Modo local: nenhum servidor configurado. Os dados ficam só neste aparelho e não há login. Veja o README para ligar ao Supabase.
+          Modo local: os dados ficam gravados só neste aparelho e não há login. A leitura das fotos por IA e o envio
+          para outros aparelhos começam quando o servidor (Supabase) for ligado.
         </div>
       )}
       {e.sync.situacao === 'sem_sessao' && (
@@ -135,6 +153,9 @@ export function App() {
       <main>
         {tela === 'lancar' && <Lancar opId={rota.id} abrirOp={(id) => irPara('lancar', id)} />}
         <Suspense fallback={<p className="muted" role="status">Abrindo…</p>}>
+          {tela === 'orientacao' && (
+            <Orientacao opId={opOrientacao} escolherOp={(id) => irPara('orientacao', id)} abrirNoLancamento={(id) => irPara('lancar', id)} />
+          )}
           {tela === 'painel' && <Painel abrirNoLancamento={(id) => irPara('lancar', id)} />}
           {tela === 'admin' && ehAdmin && <Admin />}
         </Suspense>

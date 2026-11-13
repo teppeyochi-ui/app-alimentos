@@ -19,11 +19,14 @@ create table public.perfis (
 
 -- Catálogo de produtos skin
 create table public.produtos (
-  codigo text primary key,                 -- PROD_DER, ex.: 24616701063781-975
+  codigo text primary key,                 -- SKU (PROD_DER), ex.: 24616701063781-975
   descricao text not null,
-  molde text not null check (molde in ('2x1','3x1')),
+  molde text check (molde in ('2x1','3x1')),               -- nulo = molde a confirmar (o operador escolhe na OP)
   peso_nominal_kg numeric check (peso_nominal_kg > 0),     -- nulo = peso variável (PDV)
   embalagens_por_caixa integer check (embalagens_por_caixa > 0),
+  derivacao text,                          -- DESCR_DER, ex.: FRESCATTO CXA 7,5
+  peso_caixa_kg numeric check (peso_caixa_kg > 0),         -- nulo = caixa de peso variável (PDV)
+  especie text,                            -- DESCR_AGP, ex.: SALMON
   ativo boolean not null default true
 );
 
@@ -73,6 +76,7 @@ create table public.ops (
   criado_por uuid references public.perfis(id), criado_em timestamptz default now(),
   alterado_por uuid references public.perfis(id), alterado_em timestamptz default now(),
   fechada_em timestamptz,
+  analise_ia jsonb,                        -- última avaliação da foto do produto pela IA (função analisar-op)
   sincronizado_em timestamptz not null default now(),
   constraint ops_data_obrigatoria check (data is not null or origem = 'planilha')
 );

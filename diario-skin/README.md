@@ -58,6 +58,8 @@ Depois dos passos 1 a 4 abaixo, crie duas variáveis no GitHub, em *Settings →
 
 ## Colocar no ar, passo a passo
 
+Para quem não é da área técnica, o mesmo caminho está em [LIGAR-SUPABASE.md](LIGAR-SUPABASE.md), com os links diretos de cada etapa.
+
 Os nomes dos menus do Supabase mudam de vez em quando; se algum não bater, procure pelo nome mais parecido.
 
 ### 1. Criar o projeto no Supabase

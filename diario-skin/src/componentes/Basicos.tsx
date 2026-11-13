@@ -168,7 +168,9 @@ export function partesDestino(c: Pick<Indicadores, 'embalagens_boas' | 'retrabal
   ].filter((p) => p.valor > 0);
 }
 
-export function resumoDestino(c: Indicadores): string {
+type Destino = Pick<Indicadores, 'bandejas_formadas' | 'embalagens_boas' | 'retrabalho' | 'vazias' | 'perda_nao_classificada'>;
+
+export function resumoDestino(c: Destino): string {
   if (!c.bandejas_formadas || c.embalagens_boas == null) return 'Sem dados para o destino das bandejas';
   return partesDestino(c)
     .map((p) => `${p.nome}: ${num(p.valor)} (${pct(p.valor / c.bandejas_formadas!)})`)
@@ -176,7 +178,7 @@ export function resumoDestino(c: Indicadores): string {
 }
 
 /** Barra empilhada a 100% das bandejas formadas: boas, retrabalho, vazias, perda não classificada. */
-export function BarraDestino({ c }: { c: Indicadores }) {
+export function BarraDestino({ c }: { c: Destino }) {
   const total = c.bandejas_formadas;
   // <span> (e não <div>) porque a barra também aparece dentro de botões.
   if (!total || c.embalagens_boas == null) return <span className="stack" aria-hidden="true" />;

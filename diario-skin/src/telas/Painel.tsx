@@ -5,10 +5,11 @@
 
 import { useMemo, useState } from 'react';
 import { BarraDestino, Farol, Kpi, LegendaDestino } from '../componentes/Basicos';
+import { CartoesOps, ChipsReceita, EtiquetaStatus } from '../componentes/CartoesOps';
 import {
   BarrasH, DestinoPorOp, Dispersao, LegendaProdutos, MARCADOR_OUTROS, marcadoresPorProduto, type Ponto,
 } from '../componentes/Graficos';
-import { calcular, parametrosAlterados, parametrosDaReceita, receitaVigente, temParametros, type Indicadores } from '../lib/calc';
+import { calcular, type Indicadores } from '../lib/calc';
 import { META_PARAMETRO, MOTIVOS_RETRABALHO, PARAMETROS } from '../lib/constantes';
 import { exportarCsv, exportarXlsx } from '../lib/exportar';
 import { dataBR, dataCurta, kg, num, pct } from '../lib/formato';
@@ -121,20 +122,8 @@ export default function Painel({ abrirNoLancamento }: { abrirNoLancamento: (id: 
   const opDetalhe = detalhe ? e.ops.find((o) => o.id === detalhe) ?? null : null;
   const opsComparar = comparar ? comparar.map((id) => e.ops.find((o) => o.id === id)) : null;
 
-  const alteradosDe = (o: OpLocal) => parametrosAlterados(o, parametrosDaReceita(receitaVigente(e.receitas, o.data)));
-  const etiquetaStatus = (o: OpLocal) => (
-    <span className={`chip st-${o.status} ${o.origem === 'planilha' ? 'hist' : ''}`}>{o.origem === 'planilha' ? 'histórico' : o.status}</span>
-  );
-  const receitaDe = (o: OpLocal) => {
-    if (!temParametros(o)) return <span className="small muted">sem registro</span>;
-    const alt = alteradosDe(o);
-    if (!alt.length) return <span className="chip">padrão</span>;
-    return (
-      <span className="chips">
-        {alt.map((k) => <span className="chip on" key={k}>{META_PARAMETRO[k].sigla} {num(o[k], META_PARAMETRO[k].casas)}</span>)}
-      </span>
-    );
-  };
+  const etiquetaStatus = (o: OpLocal) => <EtiquetaStatus o={o} />;
+  const receitaDe = (o: OpLocal) => <ChipsReceita o={o} receitas={e.receitas} />;
 
   async function exportar(formato: 'csv' | 'xlsx') {
     const dados = { ops: linhas.map((l) => l.o), moldes: e.moldes, receitas: e.receitas, perfis: e.perfis, produtos: e.produtos };
@@ -309,29 +298,7 @@ export default function Painel({ abrirNoLancamento }: { abrirNoLancamento: (id: 
                 </tbody>
               </table>
             </div>
-            <div className="ops-cartoes">
-              {recentes.map(({ o, c }) => (
-                <button type="button" key={o.id} className="op-cartao" onClick={() => setDetalhe(o.id)}>
-                  <span className="cab">
-                    <span>
-                      <span className="t">{o.produto_descricao || 'OP sem produto'}</span>
-                      <span className="small muted" style={{ display: 'block' }}>{dataBR(o.data)} · OP {o.op || 's/ nº'}{o.fotos.length ? ` · ${o.fotos.length} ${o.fotos.length === 1 ? 'foto' : 'fotos'}` : ''}</span>
-                    </span>
-                    {etiquetaStatus(o)}
-                  </span>
-                  <BarraDestino c={c} />
-                  <span className="nums">
-                    <span>Aprov.<b>{pct(c.aproveitamento)}</b></span>
-                    <span>Retrab.<b>{pct(c.retrabalho_pct)}</b></span>
-                    <span>Vazias<b>{pct(c.vazias_pct)}</b></span>
-                    <span>Bandejas<b>{num(c.bandejas_formadas)}</b></span>
-                    <span>kg/h<b>{num(c.produtividade_kg_h)}</b></span>
-                    <span>Ciclos/min<b>{num(c.ciclos_por_minuto, 1)}</b></span>
-                  </span>
-                  {temParametros(o) && alteradosDe(o).length > 0 && receitaDe(o)}
-                </button>
-              ))}
-            </div>
+            <CartoesOps linhas={recentes} receitas={e.receitas} aoAbrir={setDetalhe} />
           </section>
         </>
       )}

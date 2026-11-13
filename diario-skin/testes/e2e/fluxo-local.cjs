@@ -41,6 +41,8 @@ const {
     const pequenos = await alvosPequenos(p);
     verificar(pequenos.length === 0, `${tela}: alvos de toque com pelo menos 48 px${pequenos.length ? ' — ' + pequenos.join(' | ') : ''}`);
   }
+  // Os campos numéricos acompanham a OP logo depois de uma escolha: espera o valor chegar.
+  const chegou = (id, valor) => p.waitForFunction(([i, v]) => document.getElementById(i)?.value === v, [id, valor], { timeout: 3000 }).then(() => true, () => false);
   async function escolherProduto(busca) {
     await p.getByRole('button', { name: /^Produto/ }).click();
     await p.getByLabel('Buscar por SKU, nome ou derivação').fill(busca);
@@ -60,16 +62,14 @@ const {
   const doCatalogo = await p.getByText(/^Do catálogo:/).innerText();
   verificar(doCatalogo.includes('SKU 16507014073621-011') && doCatalogo.includes('peso nominal 200 g') && doCatalogo.includes('molde 3x1 (3 bandejas por passo)'), 'linha de confirmação do catálogo');
   verificar(doCatalogo.includes('derivação FRESCATTO CXA 05') && doCatalogo.includes('caixa de 5 kg'), 'derivação e peso da caixa vêm da planilha de produtos');
-  verificar((await campo('Embalagens por caixa').inputValue()) === '25', 'peso fixo: embalagens por caixa calculado (5 kg ÷ 200 g = 25)');
+  verificar(await chegou('f-epc', '25'), 'peso fixo: embalagens por caixa calculado (5 kg ÷ 200 g = 25)');
   await captura('1-identificacao');
   await conferirLayout('Lançar OP');
 
   console.log('Produto de peso variável (PDV): embalagens por caixa é do operador');
   await escolherProduto('06042002001341-1058');
-  // Os campos numéricos acompanham a OP logo depois da escolha: espera o valor chegar.
-  const esvaziou = (id) => p.waitForFunction((i) => document.getElementById(i)?.value === '', id, { timeout: 3000 }).then(() => true, () => false);
-  verificar(await esvaziou('f-pn'), 'PDV: sem peso nominal');
-  verificar(await esvaziou('f-epc'), 'PDV: embalagens por caixa vazio');
+  verificar(await chegou('f-pn', ''), 'PDV: sem peso nominal');
+  verificar(await chegou('f-epc', ''), 'PDV: embalagens por caixa vazio');
   verificar(await p.getByText('Produto de peso variável (PDV): informe quantas embalagens vão em cada caixa.').count() === 1, 'PDV: pede as embalagens por caixa');
   await campo('Embalagens por caixa').fill('12');
   verificar(await p.getByText('Produto de peso variável (PDV): informe quantas embalagens vão em cada caixa.').count() === 0, 'PDV: aviso some depois de informar');
@@ -104,7 +104,7 @@ const {
   await p.getByRole('button', { name: 'Nova OP' }).click();
   await escolherProduto('24616701063781-975');
   verificar((await campo('Molde').inputValue()) === '2x1', 'salmão 600 g: molde 2x1');
-  verificar((await campo('Embalagens por caixa').inputValue()) === '15', 'salmão 600 g: caixa de 9 kg = 15 embalagens');
+  verificar(await chegou('f-epc', '15'), 'salmão 600 g: caixa de 9 kg = 15 embalagens');
   await campo('OP').fill('20109999');
   await campo('Hora de início').fill('08:00');
   await campo('Temp. do produto (°C)').fill('18');
@@ -216,6 +216,43 @@ const {
   const csv = fs.readFileSync(path.join(CAPTURAS, 'exportacao.csv'), 'utf8');
   verificar(csv.split('\r\n').filter(Boolean).length === 18, 'CSV: cabeçalho + 17 OPs');
   verificar(/;82,5;7;/.test(csv), 'CSV com vírgula decimal (aproveitamento 82,5)');
+
+  console.log('Resumo: acompanhamento para a chefia');
+  await p.getByRole('link', { name: 'Resumo', exact: true }).click();
+  await p.getByRole('heading', { name: 'Acompanhamento da produção' }).waitFor();
+  const periodoAtivo = () => p.getByRole('group', { name: 'Período' }).locator('button[aria-pressed="true"]').innerText();
+  verificar((await periodoAtivo()) === '30 dias', 'abre nos últimos 30 dias');
+  await p.getByRole('button', { name: 'Hoje', exact: true }).click();
+  const resumo = (await p.locator('main').innerText()).replace(/\s+/g, ' ');
+  verificar(resumo.includes('Aproveitamento de bandejas 82,5%'), 'hoje: aproveitamento 82,5% em destaque');
+  verificar(resumo.includes('Produção 620 kg 990 embalagens boas'), 'hoje: 620 kg e 990 embalagens boas');
+  verificar(resumo.includes('OPs 2 1 encerrada · 1 em andamento'), 'hoje: 1 OP encerrada e 1 em andamento');
+  verificar(resumo.includes('Retrabalho 0,6% 7 embalagens') && resumo.includes('Bandejas vazias 16,9% 203 bandejas'), 'hoje: retrabalho e vazias');
+  verificar(resumo.includes('Em andamento agora 1 OP aberta'), 'mostra a OP aberta agora');
+  verificar(resumo.includes('Sem vácuo') && resumo.includes('Filme furado'), 'motivos de retrabalho do período');
+  const secaoOps = p.locator('section', { has: p.locator('#t-ops') });
+  verificar(await secaoOps.locator('.op-cartao').count() === 2, 'abaixo, as 2 OPs registradas hoje');
+  await p.locator('.dispersao .ponto').first().tap();
+  verificar((await p.locator('.dica').innerText()).includes('82,5%'), 'tocar no ponto do gráfico mostra o dia');
+  await p.locator('#t-res').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await p.locator('.aviso').first().waitFor({ state: 'detached', timeout: 8000 }).catch(() => {});
+  await captura('12-resumo');
+  await p.locator('#t-tend').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await captura('13-resumo-tendencia');
+  await conferirLayout('Resumo');
+  await p.getByRole('button', { name: 'Tudo', exact: true }).click();
+  verificar(await secaoOps.locator('.op-cartao').count() === 17, 'em "Tudo": as 17 OPs registradas');
+  await p.locator('#t-tend').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await captura('14-resumo-tudo');
+  await conferirLayout('Resumo (tudo)');
+  await secaoOps.locator('.op-cartao', { hasText: '20109999' }).click();
+  verificar((await p.locator('dialog[open] .dl').innerText()).replace(/\s+/g, ' ').includes('Bandejas formadas 1.200'), 'tocar na OP abre o detalhe');
+  await p.locator('dialog[open]').getByRole('button', { name: 'Fechar' }).click();
+  // Quem deixou o aplicativo no Resumo volta para ele ao abrir de novo.
+  await p.goto(base);
+  await p.getByRole('heading', { name: 'Acompanhamento da produção' }).waitFor({ timeout: 5000 }).then(() => verificar(true, 'reabrir o aplicativo volta para o Resumo'), () => verificar(false, 'reabrir o aplicativo volta para o Resumo'));
+  await p.getByRole('link', { name: 'Lançar OP', exact: true }).click();
+  await p.getByRole('heading', { name: 'OPs em andamento' }).waitFor();
 
   console.log('Administração');
   await p.goto(base + '#admin');

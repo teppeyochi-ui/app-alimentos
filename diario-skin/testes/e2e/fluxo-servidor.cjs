@@ -67,7 +67,7 @@ const [ADMIN, PD, OPERADOR, NOVO] = USUARIOS;
     await entrar(p, OPERADOR);
     await p.getByRole('heading', { name: 'OPs em andamento' }).waitFor();
     await sincronizado(p);
-    verificar(await p.locator('.abas a').count() === 3, 'operador vê Lançar, Orientação e Painel, mas não a Administração');
+    verificar(await p.locator('.abas a').count() === 4, 'operador vê Lançar, Orientação, Resumo e Painel, mas não a Administração');
     await p.evaluate(() => navigator.serviceWorker.ready);
 
     await p.getByRole('button', { name: 'Nova OP' }).click();
@@ -76,7 +76,7 @@ const [ADMIN, PD, OPERADOR, NOVO] = USUARIOS;
     verificar(await p.locator('.lista-produtos button').count() === 2, 'catálogo veio do servidor (busca acha o salmão 600 g)');
     await p.locator('.lista-produtos button').first().click();
     await campo(p, 'OP').fill('20109999');
-    verificar((await campo(p, 'Embalagens por caixa').inputValue()) === '15', 'embalagens por caixa veio do catálogo (caixa de 9 kg ÷ 600 g = 15)');
+    verificar(await p.waitForFunction(() => document.getElementById('f-epc')?.value === '15', null, { timeout: 3000 }).then(() => true, () => false), 'embalagens por caixa veio do catálogo (caixa de 9 kg ÷ 600 g = 15)');
     await campo(p, 'Hora de início').fill('08:00');
     await p.getByLabel('Adicionar foto da tela').setInputFiles([await fotoDeTeste(p, 'tela 417')]);
     await p.locator('.ph img').first().waitFor();

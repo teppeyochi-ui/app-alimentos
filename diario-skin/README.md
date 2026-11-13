@@ -195,6 +195,19 @@ O catálogo vem da planilha de produtos do P&D (`dados/catalogo.csv`, 118 SKUs):
 
 O aparelho que já usava o aplicativo em modo local recebe os SKUs e os campos novos na primeira abertura depois da atualização, sem perder o que tinha. Para atualizar o catálogo depois: *Administração → Produtos → Importar CSV* (aceita os nomes de coluna da planilha).
 
+### Resumo para acompanhamento
+
+A aba **Resumo** é para quem acompanha a produção sem lançar: a chefia, no celular. Só mostra; nada ali altera dados.
+
+- **Período:** Hoje, 7 dias, 30 dias ou Tudo.
+- **Em destaque:** o aproveitamento de bandejas do período, a faixa (bom, atenção, baixo) e a diferença para o período anterior de mesmo tamanho.
+- **Indicadores:** produção em kg, OPs encerradas e em andamento, produtividade, retrabalho, bandejas vazias e filme perdido, com a barra de destino das bandejas.
+- **Em andamento agora:** as OPs abertas, com o que já foi lançado.
+- **Aproveitamento por dia** e **motivos de retrabalho** do período.
+- **OPs registradas**, embaixo: tocar numa OP abre o detalhe, com fotos e parâmetros.
+
+Quem deixa o aplicativo aberto no Resumo volta para o Resumo na próxima vez que abrir. Com o Supabase ligado, a chefia cria a própria conta e o administrador libera em *Administração → Usuários*. Ainda não existe um papel só de leitura: a conta entra como operador ou P&D.
+
 ### Orientação ao operador
 
 A aba **Orientação** responde, para uma OP: a configuração da máquina está boa, e o que tentar para melhorar? Funciona sem internet, só com os dados do aparelho.
@@ -251,7 +264,7 @@ No painel, **Exportar CSV** e **Exportar XLSX** geram uma linha por OP do filtro
 diario-skin/
 ├─ src/
 │  ├─ lib/           cálculos, orientação, banco do aparelho, sincronização, login, exportação
-│  ├─ telas/         Lançar OP, Orientação, Painel P&D, Detalhe/Comparação, Administração, Entrar
+│  ├─ telas/         Lançar OP, Orientação, Resumo, Painel P&D, Detalhe/Comparação, Administração, Entrar
 │  └─ componentes/   campos, fotos, seletor de produto, gráficos
 ├─ supabase/
 │  ├─ migrations/    tabelas, permissões, salvar_op, view, bucket de fotos
@@ -270,7 +283,7 @@ Depois de alterar um CSV de `dados/` ou uma migração, rode `npm run sql` para 
 
 | Comando | O que confere | Precisa de |
 |---|---|---|
-| `npm test` | Cálculos (critérios 1 a 3), catálogo (derivação, caixa, PDV), orientação, sincronização com servidor simulado, CSV e XLSX | Node |
+| `npm test` | Cálculos (critérios 1 a 3), catálogo (derivação, caixa, PDV), orientação, resumo por período, sincronização com servidor simulado, CSV e XLSX | Node |
 | `npm run test:banco` | Migrações, carga, view (critérios 2 e 3), permissões (critério 5), `salvar_op` sem duplicar, num PostgreSQL temporário | PostgreSQL 15+ |
 | `npm run test:navegador` | Fluxo completo em celular de 360 px, modo local: critérios 1, 2, 3, produto PDV, uso em modo avião, rolagem e alvos de toque (critério 6), orientação, painel, exportação | Chromium (Playwright) |
 | `npm run test:integrado` | O aplicativo com login contra um PostgreSQL temporário com as migrações reais: leitura da foto da tela na hora, modo avião → sincronização sem duplicar (critério 4), operador × P&D em OP fechada (critério 5), avaliação da foto gravada no banco, liberação de usuário | PostgreSQL 15+ e Chromium |

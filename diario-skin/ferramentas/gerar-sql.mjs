@@ -104,8 +104,8 @@ writeFileSync(join(raiz, 'supabase/instalar.sql'), instalar);
 console.log('supabase/instalar.sql');
 
 // ---------------------------------------------------------------------------
-// atualizar.sql: leva um banco criado com a PRIMEIRA versão do instalar.sql
-// (catálogo de 91 produtos, sem derivação) para a versão atual, sem apagar nada.
+// atualizar.sql: leva um banco criado com qualquer versão anterior do
+// instalar.sql para a versão atual, sem apagar nada.
 // Pode ser rodado mais de uma vez e também num banco já atualizado.
 const valoresProdutos = produtos
   .map(
@@ -117,8 +117,9 @@ const valoresProdutos = produtos
 const atualizar = `-- Diário da Linha Skin — atualização do banco criado com a primeira versão.
 -- Gerado por ferramentas/gerar-sql.mjs.
 -- Uso: Supabase → SQL Editor → colar tudo → Run.
--- Não apaga nada: acrescenta colunas, troca a função de gravação e a view, e
--- completa o catálogo. Pode ser rodado mais de uma vez.
+-- Não apaga nada: acrescenta colunas, troca a função de gravação e a view,
+-- cria o histórico de alterações e o perfil gestor, e completa o catálogo.
+-- Pode ser rodado mais de uma vez, em qualquer versão anterior do banco.
 
 -- 1) Catálogo: derivação, peso da caixa, espécie e molde a confirmar
 alter table public.produtos alter column molde drop not null;
@@ -133,7 +134,9 @@ alter table public.ops add column if not exists analise_ia jsonb;
 -- 3) Função de gravação e view de indicadores (versões atuais)
 ${ler('supabase/migrations/20261112000300_salvar_op.sql')}
 ${ler('supabase/migrations/20261112000400_indicadores.sql')}
--- 4) Catálogo da planilha de produtos (${produtos.length} SKUs). Produto novo entra; no que já
+-- 4) Histórico de alterações das OPs e perfil gestor
+${ler('supabase/migrations/20261113000600_historico_e_gestor.sql')}
+-- 5) Catálogo da planilha de produtos (${produtos.length} SKUs). Produto novo entra; no que já
 --    existia, entram derivação, caixa e espécie. Molde e embalagens por caixa
 --    que já estavam preenchidos no banco são mantidos.
 insert into public.produtos as p
@@ -148,11 +151,13 @@ on conflict (codigo) do update set
   molde_a_confirmar = case when p.derivacao is null then excluded.molde_a_confirmar else p.molde_a_confirmar end,
   embalagens_por_caixa = coalesce(p.embalagens_por_caixa, excluded.embalagens_por_caixa);
 
--- Conferência: deve mostrar 118 (ou mais, se já houver produtos incluídos à mão) e true.
+-- Conferência: deve mostrar 118 (ou mais, se já houver produtos incluídos à mão) e true nas outras três colunas.
 select
   (select count(*) from public.produtos) as produtos,
   (select count(*) from information_schema.columns
-    where table_schema = 'public' and table_name = 'produtos' and column_name = 'molde_a_confirmar') = 1 as versao_nova;
+    where table_schema = 'public' and table_name = 'produtos' and column_name = 'molde_a_confirmar') = 1 as versao_nova,
+  to_regclass('public.ops_historico') is not null as historico,
+  (select pg_get_constraintdef(c.oid) like '%gestor%' from pg_constraint c where c.conname = 'perfis_papel_check') as perfil_gestor;
 `;
 writeFileSync(join(raiz, 'supabase/atualizar.sql'), atualizar);
 console.log('supabase/atualizar.sql');

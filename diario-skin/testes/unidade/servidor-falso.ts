@@ -92,6 +92,7 @@ export class ServidorFalso implements Servidor {
 
   async urlFoto(): Promise<string | null> { return null; }
   async lerTelas() { return { telas: [], valores: {}, duvidas: '' }; }
+  async baixarHistorico() { return []; }
   async analisarOp() {
     return { nota_aparencia: null, defeitos: [], diagnostico: '', sugestoes: [], confianca: 'baixa' as const, limitacoes: '' };
   }

@@ -45,7 +45,13 @@ function useRota(): Rota {
   return rota;
 }
 
-const PAPEIS = { operador: 'Operador', pd: 'P&D', admin: 'Administrador' } as const;
+const PAPEIS = { operador: 'Operador', pd: 'P&D', admin: 'Administrador', gestor: 'Gestor (só consulta)' } as const;
+
+/** O gestor só consulta: vê o Resumo e o Painel. A Administração é só do administrador. */
+function podeAbrir(tela: Tela, papel: keyof typeof PAPEIS): boolean {
+  if (papel === 'gestor') return tela === 'resumo' || tela === 'painel';
+  return tela !== 'admin' || papel === 'admin';
+}
 
 const ABAS: { tela: Tela; nome: string; curto: string }[] = [
   { tela: 'lancar', nome: 'Lançar OP', curto: 'Lançar' },
@@ -110,7 +116,7 @@ export function App() {
   if (rota.tela === 'orientacao' && !opOrientacao) {
     try { opOrientacao = localStorage.getItem(CHAVE_OP); } catch { /* sem armazenamento */ }
   }
-  const tela: Tela = rota.tela === 'admin' && !ehAdmin ? 'lancar' : rota.tela;
+  const tela: Tela = podeAbrir(rota.tela, perfil.papel) ? rota.tela : perfil.papel === 'gestor' ? 'resumo' : 'lancar';
   const sync = resumoSync(e);
   const pendentes = quantasPendentes(e);
 
@@ -128,7 +134,7 @@ export function App() {
         </div>
         <nav className="abas" aria-label="Seções">
           {/* No celular estreito as abas usam o nome curto; o nome completo fica para o leitor de tela. */}
-          {ABAS.filter((a) => a.tela !== 'admin' || ehAdmin).map((a) => (
+          {ABAS.filter((a) => podeAbrir(a.tela, perfil.papel)).map((a) => (
             <a key={a.tela} href={`#${a.tela}`} aria-label={a.nome} aria-current={tela === a.tela ? 'page' : undefined}>
               <span className="longo" aria-hidden="true">{a.nome}</span>
               <span className="curto" aria-hidden="true">{a.curto}</span>

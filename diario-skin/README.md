@@ -74,7 +74,7 @@ Os nomes dos menus do Supabase mudam de vez em quando; se algum não bater, proc
 
 Esse arquivo cria as tabelas, as permissões, a função de gravação, a view `ops_indicadores`, o bucket de fotos `fotos-op` e carrega os moldes, a receita padrão, os 118 SKUs do catálogo e as 15 produções do histórico. Rode **uma vez**, num projeto novo.
 
-Banco criado com a primeira versão deste arquivo (catálogo de 91 produtos)? Rode [`supabase/atualizar.sql`](supabase/atualizar.sql) no mesmo SQL Editor: acrescenta as colunas novas, troca a função e a view e completa o catálogo, sem apagar nada.
+**Banco que já existe:** a cada versão nova do aplicativo que mexe no banco, rode [`supabase/atualizar.sql`](supabase/atualizar.sql) no mesmo SQL Editor. Ele leva o banco de qualquer versão anterior para a atual sem apagar nada (colunas novas, função de gravação, view, histórico de alterações, perfil gestor e catálogo) e pode ser rodado mais de uma vez. No fim mostra uma linha de conferência: `118` produtos e `true` nas outras colunas.
 
 Quem preferir a linha de comando do Supabase pode usar os arquivos separados: `supabase/migrations/*.sql` (na ordem) e depois `supabase/seed.sql`.
 
@@ -206,7 +206,7 @@ A aba **Resumo** é para quem acompanha a produção sem lançar: a chefia, no c
 - **Aproveitamento por dia** e **motivos de retrabalho** do período.
 - **OPs registradas**, embaixo: tocar numa OP abre o detalhe, com fotos e parâmetros.
 
-Quem deixa o aplicativo aberto no Resumo volta para o Resumo na próxima vez que abrir. Com o Supabase ligado, a chefia cria a própria conta e o administrador libera em *Administração → Usuários*. Ainda não existe um papel só de leitura: a conta entra como operador ou P&D.
+Quem deixa o aplicativo aberto no Resumo volta para o Resumo na próxima vez que abrir. Com o Supabase ligado, a chefia cria a própria conta e o administrador libera em *Administração → Usuários*, com o papel **Gestor (só consulta)**: essa conta vê só o Resumo e o Painel e não consegue lançar nem alterar nada.
 
 ### Orientação ao operador
 
@@ -231,8 +231,20 @@ Valem no banco (políticas por linha), não só na tela:
 | Operador | Criar OP, alterar OP aberta, encerrar |
 | P&D | Tudo do operador, mais corrigir OP encerrada e o histórico da planilha |
 | Administrador | Tudo do P&D, mais catálogo, pesos de filme, receita padrão, usuários e cancelar/restaurar OP |
+| Gestor | Só consulta: vê o Resumo, o Painel, o detalhe das OPs e o histórico de alterações. Não lança, não altera e não usa a IA |
 
 Ninguém apaga OP. Conta nova fica sem acesso até um administrador liberar.
+
+### Histórico de alterações
+
+O banco guarda **quem mudou o quê** em cada OP, de quanto para quanto (tabela `ops_historico`). No detalhe da OP, o botão **Ver quem alterou e o quê** mostra a lista, da alteração mais recente para a mais antiga.
+
+- Entram os campos da OP, as contagens de retrabalho, as paradas, as fotos (inclusão e remoção) e a nota da avaliação por IA.
+- **OP aberta:** o que a mesma pessoa altera fica junto em blocos de até 15 minutos, com o valor de antes e o de depois do bloco. Assim o lançamento normal não vira um registro por toque.
+- **OP encerrada:** cada gravação é um registro, marcado como “depois de encerrada”. É onde aparecem as correções do P&D.
+- Quem grava são gatilhos do banco. Nenhum usuário escreve, altera ou apaga o histórico pelo aplicativo, nem o administrador.
+- O histórico começa a contar quando o banco recebe esta versão: o que foi alterado antes não tem registro. Alteração feita direto no painel do Supabase aparece como “direto no banco”.
+- Fica no servidor e é consultado com conexão. Em modo local não existe.
 
 ### Cálculos
 
@@ -250,6 +262,8 @@ No painel, **Exportar CSV** e **Exportar XLSX** geram uma linha por OP do filtro
 | `ops.data` pode ficar vazia no histórico da planilha | Duas das 15 linhas do histórico vieram sem data; no diário a data continua obrigatória |
 | `ops.sincronizado_em` (coluna nova) | Hora em que o servidor recebeu a gravação; os aparelhos baixam só o que mudou |
 | `ops.analise_ia` (coluna nova, JSON) | Última avaliação da foto do produto pela IA |
+| `ops_historico` (tabela nova) e gatilhos | Trilha de alterações: quem mudou o quê, de quanto para quanto |
+| `perfis.papel` aceita `gestor` | Perfil só de consulta, para a chefia |
 | `produtos.derivacao`, `peso_caixa_kg`, `especie`, `molde_a_confirmar` (colunas novas); `produtos.molde` pode ficar vazio | Planilha de produtos do P&D: derivação, caixa e agrupamento; 27 SKUs com o molde a confirmar |
 | `receitas_padrao.ciclo_teorico_s` (coluna nova) | Ciclo teórico configurável (10,3 s na carga inicial) |
 | `perfis.ativo` começa `false` | Conta nova só entra depois de liberada |
@@ -267,11 +281,11 @@ diario-skin/
 │  ├─ telas/         Lançar OP, Orientação, Resumo, Painel P&D, Detalhe/Comparação, Administração, Entrar
 │  └─ componentes/   campos, fotos, seletor de produto, gráficos
 ├─ supabase/
-│  ├─ migrations/    tabelas, permissões, salvar_op, view, bucket de fotos
+│  ├─ migrations/    tabelas, permissões, salvar_op, view, bucket de fotos, histórico e gestor
 │  ├─ functions/     ler-telas (lê as fotos das telas) e analisar-op (avalia a foto do produto)
 │  ├─ seed.sql       carga inicial (gerada)
 │  ├─ instalar.sql   tudo acima num arquivo só (gerado)
-│  └─ atualizar.sql  leva um banco da primeira versão para a atual (gerado)
+│  └─ atualizar.sql  leva um banco de versão anterior para a atual (gerado)
 ├─ dados/            catalogo.csv e historico.csv (origem da carga inicial)
 ├─ ferramentas/      geradores do SQL e dos ícones
 └─ testes/           unidade, banco e navegador
@@ -283,8 +297,8 @@ Depois de alterar um CSV de `dados/` ou uma migração, rode `npm run sql` para 
 
 | Comando | O que confere | Precisa de |
 |---|---|---|
-| `npm test` | Cálculos (critérios 1 a 3), catálogo (derivação, caixa, PDV), orientação, resumo por período, sincronização com servidor simulado, CSV e XLSX | Node |
-| `npm run test:banco` | Migrações, carga, view (critérios 2 e 3), permissões (critério 5), `salvar_op` sem duplicar, num PostgreSQL temporário | PostgreSQL 15+ |
+| `npm test` | Cálculos (critérios 1 a 3), catálogo (derivação, caixa, PDV), orientação, resumo por período, histórico de alterações, sincronização com servidor simulado, CSV e XLSX | Node |
+| `npm run test:banco` | Migrações, carga, view (critérios 2 e 3), permissões por perfil (critério 5), `salvar_op` sem duplicar, histórico de alterações, num PostgreSQL temporário. Com `--instalador` testa o `instalar.sql`; com `--atualizacao [commit]`, o `atualizar.sql` sobre um banco antigo | PostgreSQL 15+ |
 | `npm run test:navegador` | Fluxo completo em celular de 360 px, modo local: critérios 1, 2, 3, produto PDV, uso em modo avião, rolagem e alvos de toque (critério 6), orientação, painel, exportação | Chromium (Playwright) |
 | `npm run test:integrado` | O aplicativo com login contra um PostgreSQL temporário com as migrações reais: leitura da foto da tela na hora, modo avião → sincronização sem duplicar (critério 4), operador × P&D em OP fechada (critério 5), avaliação da foto gravada no banco, liberação de usuário | PostgreSQL 15+ e Chromium |
 

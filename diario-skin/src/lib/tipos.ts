@@ -1,7 +1,8 @@
 // Tipos do domínio. Os nomes dos campos são os mesmos das colunas do banco.
 
 export type Molde = '2x1' | '3x1';
-export type Papel = 'operador' | 'pd' | 'admin';
+/** gestor = só consulta (não lança nem altera). */
+export type Papel = 'operador' | 'pd' | 'admin' | 'gestor';
 export type StatusOp = 'aberta' | 'fechada' | 'cancelada';
 export type Origem = 'diario' | 'planilha';
 export type Aparencia = 'boa' | 'regular' | 'ruim';

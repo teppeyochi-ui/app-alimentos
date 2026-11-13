@@ -39,9 +39,11 @@ if [ "${1:-}" = "--instalador" ]; then
   # Testa o arquivo único que o README manda colar no SQL Editor.
   "${SQL[@]}" -f "$RAIZ/supabase/instalar.sql"
 elif [ "${1:-}" = "--atualizacao" ]; then
-  # Banco criado com a primeira versão do instalador (commit ae82a46) e depois
-  # atualizado com supabase/atualizar.sql, rodado duas vezes.
-  git -C "$RAIZ" show ae82a46:diario-skin/supabase/instalar.sql > "$TMP/instalar-v1.sql"
+  # Banco criado com um instalador antigo e depois atualizado com
+  # supabase/atualizar.sql, rodado duas vezes. O segundo argumento é o commit do
+  # instalador antigo: ae82a46 = primeira versão (padrão); cbc3e89 = versão com
+  # o catálogo da planilha, antes do histórico de alterações.
+  git -C "$RAIZ" show "${2:-ae82a46}":diario-skin/supabase/instalar.sql > "$TMP/instalar-v1.sql"
   chmod a+r "$TMP/instalar-v1.sql"
   "${SQL[@]}" -f "$TMP/instalar-v1.sql"
   "${SQL[@]}" -f "$RAIZ/supabase/atualizar.sql" >/dev/null

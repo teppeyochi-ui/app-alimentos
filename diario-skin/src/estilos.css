@@ -387,3 +387,9 @@ dialog::backdrop { background: rgba(10, 15, 20, .6); }
 .ops-cartoes.sempre { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 8px; }
 /* Cinco abas (administrador) no celular estreito. */
 @media (max-width: 420px) { .abas a { font-size: 14px; padding-left: 3px; padding-right: 3px; } .abas { gap: 2px; } }
+
+/* ---------- histórico de alterações ---------- */
+.historico { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; }
+.historico > li { border-top: 1px solid var(--line); padding: 8px 0; display: flex; flex-direction: column; gap: 2px; }
+.historico .cab { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.historico .lista-simples { font-size: 13.5px; margin-top: 2px; overflow-wrap: anywhere; }

@@ -269,12 +269,106 @@ update public.perfis set ativo = false, papel = 'operador' where id = '44444444-
 select teste.erro('não fica sem administrador ativo', $$update public.perfis set papel = 'pd' where id = '11111111-1111-4111-8111-111111111111'$$, '23514');
 select teste.erro('nem desativando o último admin', $$update public.perfis set ativo = false where id = '11111111-1111-4111-8111-111111111111'$$, '23514');
 
+-- ------------------------------------------------------------------ histórico de alterações
+\echo 'Histórico de alterações'
+reset role;
+create function teste.h(extra jsonb, minuto integer) returns jsonb language sql as $$
+  select public.salvar_op(teste.op(teste.t(minuto),
+    '{"id": "aaaaaaaa-0000-4000-8000-0000000000a1", "paradas": [], "fotos": [], "retrabalho": {"sem_vacuo": 5, "furo": 3}}'::jsonb || extra))
+$$;
+create function teste.ultimo() returns public.ops_historico language sql as $$
+  select h from public.ops_historico h where h.op_id = 'aaaaaaaa-0000-4000-8000-0000000000a1' order by h.id desc limit 1
+$$;
+create function teste.registros() returns bigint language sql as $$
+  select count(*) from public.ops_historico h where h.op_id = 'aaaaaaaa-0000-4000-8000-0000000000a1'
+$$;
+set role authenticated;
+select set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', false);
+
+select teste.igual('operador cria a OP', teste.h('{"caixas": 100, "retrabalho": {"sem_vacuo": 5, "furo": 2, "ruga": 0}}', 80) ->> 'resultado', 'gravada');
+select teste.igual('criação: um registro só', teste.registros(), 1::bigint);
+select teste.igual('marcado como criação', (teste.ultimo()).criou, true);
+select teste.igual('registra quem criou', (teste.ultimo()).por, '33333333-3333-4333-8333-333333333333'::uuid);
+select teste.igual('retrabalho lançado na criação entra no mesmo registro', (teste.ultimo()).mudancas -> 'retrabalho.sem_vacuo', '{"de": 0, "para": 5}'::jsonb);
+select teste.igual('motivo zerado não aparece', (teste.ultimo()).mudancas ? 'retrabalho.ruga', false);
+
+select teste.igual('operador altera caixas e conta mais um furo', teste.h('{"caixas": 105}', 81) ->> 'resultado', 'gravada');
+select teste.igual('OP aberta, mesma pessoa: junta no mesmo registro', teste.registros(), 1::bigint);
+select teste.igual('guarda de quanto para quanto', (teste.ultimo()).mudancas -> 'caixas', '{"de": 100, "para": 105}'::jsonb);
+select teste.igual('no retrabalho fica o valor de antes do registro', (teste.ultimo()).mudancas -> 'retrabalho.furo', '{"de": 0, "para": 3}'::jsonb);
+select teste.igual('operador volta as caixas ao valor de antes', teste.h('{"caixas": 100}', 82) ->> 'resultado', 'gravada');
+select teste.igual('o que voltou ao valor de antes sai do registro', (teste.ultimo()).mudancas ? 'caixas', false);
+
+select teste.igual('operador encerra', teste.h('{"caixas": 110, "status": "fechada"}', 83) ->> 'resultado', 'gravada');
+select teste.igual('encerrar abre um registro novo', teste.registros(), 2::bigint);
+select teste.igual('o registro do encerramento traz só a mudança de status', (teste.ultimo()).mudancas, '{"status": {"de": "aberta", "para": "fechada"}}'::jsonb);
+select teste.igual('o que foi digitado antes de encerrar fica no registro da OP aberta',
+  (select h.mudancas -> 'caixas' from public.ops_historico h where h.op_id = 'aaaaaaaa-0000-4000-8000-0000000000a1' order by h.id limit 1),
+  '{"de": 100, "para": 110}'::jsonb);
+
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', false);
+select teste.igual('P&D corrige a OP encerrada', teste.h('{"caixas": 111, "status": "fechada"}', 84) ->> 'resultado', 'gravada');
+select teste.igual('correção em OP encerrada: registro próprio', teste.registros(), 3::bigint);
+select teste.igual('só o que mudou de verdade (o status não entra)', (teste.ultimo()).mudancas, '{"caixas": {"de": 110, "para": 111}}'::jsonb);
+select teste.igual('registra quem corrigiu', (teste.ultimo()).por, '22222222-2222-4222-8222-222222222222'::uuid);
+select teste.igual('P&D corrige de novo', teste.h('{"caixas": 112, "status": "fechada"}', 85) ->> 'resultado', 'gravada');
+select teste.igual('OP encerrada: cada gravação é um registro', teste.registros(), 4::bigint);
+select teste.igual('gravar de novo sem mudar nada', teste.h('{"caixas": 112, "status": "fechada"}', 86) ->> 'resultado', 'gravada');
+select teste.igual('não cria registro', teste.registros(), 4::bigint);
+
+select teste.igual('P&D inclui uma parada', teste.h('{"caixas": 112, "status": "fechada", "paradas": [{"id": "bbbbbbbb-0000-4000-8000-0000000000a1", "motivo": "Outro", "minutos": 9}]}', 87) ->> 'resultado', 'gravada');
+select teste.igual('parada incluída fica registrada', (teste.ultimo()).mudancas, '{"parada.bbbbbbbb-0000-4000-8000-0000000000a1": {"de": null, "para": "9 min · Outro"}}'::jsonb);
+select teste.igual('P&D remove a parada', teste.h('{"caixas": 112, "status": "fechada", "paradas_removidas": ["bbbbbbbb-0000-4000-8000-0000000000a1"]}', 88) ->> 'resultado', 'gravada');
+select teste.igual('parada removida fica registrada', (teste.ultimo()).mudancas, '{"parada.bbbbbbbb-0000-4000-8000-0000000000a1": {"de": "9 min · Outro", "para": null}}'::jsonb);
+select teste.igual('P&D inclui foto e avaliação da IA', teste.h('{"caixas": 112, "status": "fechada",
+  "fotos": [{"id": "cccccccc-0000-4000-8000-0000000000a1", "tipo": "produto", "caminho": "a1/c.jpg"}],
+  "analise_ia": {"em": "2026-11-13T12:00:00Z", "nota_aparencia": 8, "diagnostico": "texto longo que não vai para o histórico"}}', 89) ->> 'resultado', 'gravada');
+select teste.igual('foto incluída fica registrada', (teste.ultimo()).mudancas -> 'foto.cccccccc-0000-4000-8000-0000000000a1', '{"de": null, "para": "produto"}'::jsonb);
+select teste.igual('da avaliação da IA ficam a nota e a data', (teste.ultimo()).mudancas -> 'analise_ia', '{"de": null, "para": {"nota": 8, "em": "2026-11-13T12:00:00Z"}}'::jsonb);
+
+select teste.igual('a correção da primeira OP de teste também ficou registrada',
+  (select h.mudancas from public.ops_historico h where h.op_id = 'aaaaaaaa-0000-4000-8000-000000000001' and h.por = '22222222-2222-4222-8222-222222222222' order by h.id limit 1),
+  '{"caixas": {"de": 110, "para": 111}}'::jsonb);
+select teste.igual('correção do P&D no histórico da planilha fica registrada',
+  (select h.mudancas -> 'molde' from public.ops_historico h where h.op_id = '00000000-0000-4000-8000-000000000009' order by h.id limit 1),
+  '{"de": "2x1", "para": "3x1"}'::jsonb);
+select teste.igual('a carga da planilha não conta como criação',
+  (select count(*) from public.ops_historico h join public.ops o on o.id = h.op_id where o.origem = 'planilha' and h.criou), 0::bigint);
+
+select teste.erro('usuário não escreve no histórico', $$insert into public.ops_historico (op_id) values ('aaaaaaaa-0000-4000-8000-0000000000a1')$$, '42501');
+select teste.erro('nem altera', $$update public.ops_historico set mudancas = '{}'$$, '42501');
+select teste.erro('nem apaga', $$delete from public.ops_historico$$, '42501');
+select teste.erro('nem chama a função de registro', $$select public.historico_registrar('aaaaaaaa-0000-4000-8000-0000000000a1', '{"caixas": {"de": 1, "para": 2}}', false, false)$$, '42501');
+
+-- ------------------------------------------------------------------ gestor
+\echo 'Gestor: só consulta'
+select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', false);
+update public.perfis set papel = 'gestor', ativo = true where id = '44444444-4444-4444-8444-444444444444';
+select teste.igual('admin define o perfil gestor', (select papel from public.perfis where id = '44444444-4444-4444-8444-444444444444'), 'gestor');
+select teste.erro('perfil que não existe é recusado', $$update public.perfis set papel = 'chefe' where id = '44444444-4444-4444-8444-444444444444'$$, '23514');
+select set_config('request.jwt.claim.sub', '44444444-4444-4444-8444-444444444444', false);
+select teste.igual('gestor lê as OPs', (select count(*) >= 18 from public.ops), true);
+select teste.igual('gestor lê a view de indicadores', (select count(*) >= 18 from public.ops_indicadores), true);
+select teste.igual('gestor lê o histórico de alterações', teste.registros() >= 7, true);
+select teste.igual('gestor lê o catálogo', (select count(*) from public.produtos), 119::bigint);
+select teste.erro('gestor não cria OP', $$select public.salvar_op(teste.op(teste.t(95), '{"id": "aaaaaaaa-0000-4000-8000-0000000000a2", "paradas": [], "fotos": []}'))$$, '42501');
+select teste.erro('gestor não altera OP', $$select teste.h('{"caixas": 1, "status": "fechada"}', 96)$$, '42501');
+select teste.erro('gestor não inclui parada', $$insert into public.op_paradas (op_id, motivo, minutos) values ('aaaaaaaa-0000-4000-8000-0000000000a1', 'Outro', 5)$$, '42501');
+select teste.erro('gestor não envia foto', $$insert into storage.objects (bucket_id, name) values ('fotos-op', 'a1/g.jpg')$$, '42501');
+update public.produtos set embalagens_por_caixa = 1 where codigo = '24616701063781-975';
+select teste.igual('gestor não altera o catálogo', (select embalagens_por_caixa from public.produtos where codigo = '24616701063781-975'), 9);
+update public.perfis set papel = 'admin' where id = '44444444-4444-4444-8444-444444444444';
+select teste.igual('gestor não muda o próprio perfil', (select papel from public.perfis where id = '44444444-4444-4444-8444-444444444444'), 'gestor');
+select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', false);
+update public.perfis set ativo = false, papel = 'operador' where id = '44444444-4444-4444-8444-444444444444';
+
 -- ------------------------------------------------------------------ inativo e sem login
 \echo 'Usuário inativo e sem login'
 select set_config('request.jwt.claim.sub', '44444444-4444-4444-8444-444444444444', false);
 select teste.igual('inativo não lê OPs', (select count(*) from public.ops), 0::bigint);
 select teste.igual('inativo não lê o catálogo', (select count(*) from public.produtos), 0::bigint);
 select teste.igual('inativo não lê a view', (select count(*) from public.ops_indicadores), 0::bigint);
+select teste.igual('inativo não lê o histórico de alterações', (select count(*) from public.ops_historico), 0::bigint);
 select teste.igual('inativo vê só o próprio perfil', (select count(*) from public.perfis), 1::bigint);
 select teste.erro('inativo não grava OP', $$select public.salvar_op(teste.op(teste.t(70), '{"id": "aaaaaaaa-0000-4000-8000-000000000008", "paradas": [], "fotos": []}'))$$, '42501');
 select teste.erro('inativo não envia foto', $$insert into storage.objects (bucket_id, name) values ('fotos-op', 'x/y.jpg')$$, '42501');

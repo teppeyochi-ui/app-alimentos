@@ -389,7 +389,7 @@ function Receita({ e }: { e: Estado }) {
 
 // ------------------------------------------------------------------ usuários
 
-const PAPEIS: [Papel, string][] = [['operador', 'Operador'], ['pd', 'P&D'], ['admin', 'Administrador']];
+const PAPEIS: [Papel, string][] = [['operador', 'Operador'], ['pd', 'P&D'], ['admin', 'Administrador'], ['gestor', 'Gestor (só consulta)']];
 
 function LinhaUsuario({ perfil, eu }: { perfil: Perfil; eu: boolean }) {
   const [p, setP] = useState(perfil);

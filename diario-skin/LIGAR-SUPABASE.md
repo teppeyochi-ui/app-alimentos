@@ -138,8 +138,24 @@ select
 | banco_criado | versao_nova | O que fazer |
 |---|---|---|
 | true | true | O banco está pronto. Siga para a etapa 3 |
-| true | false | O banco é da primeira versão. Abra o [arquivo de atualização](https://github.com/teppeyochi-ui/app-alimentos/blob/main/diario-skin/supabase/atualizar.sql), copie com **Copy raw file**, cole numa consulta nova e clique em **Run**. Ele não apaga nada. No fim deve aparecer `118` e `true` |
+| true | false | O banco é da primeira versão. Abra o [arquivo de atualização](https://github.com/teppeyochi-ui/app-alimentos/blob/main/diario-skin/supabase/atualizar.sql), copie com **Copy raw file**, cole numa consulta nova e clique em **Run**. Ele não apaga nada. No fim deve aparecer `118` e `true` nas outras colunas |
 | false | false | O arquivo foi colado duas vezes. Apague o editor, cole **uma vez só** e rode de novo |
+
+## Quando sair uma versão nova do aplicativo que mexe no banco
+
+Algumas versões novas precisam de uma atualização no banco (por exemplo, a que trouxe o histórico de alterações e o perfil Gestor). O caminho é sempre o mesmo e não apaga nada:
+
+1. Abra o [arquivo de atualização](https://github.com/teppeyochi-ui/app-alimentos/blob/main/diario-skin/supabase/atualizar.sql) e clique em **Copy raw file**.
+2. No Supabase: **SQL Editor** → **+** → **Create a new snippet** → cole **uma vez só** → **Run**.
+3. No fim deve aparecer uma linha com `118` e `true` nas outras colunas (`versao_nova`, `historico`, `perfil_gestor`).
+
+Pode rodar esse arquivo mais de uma vez sem problema.
+
+## Dar acesso só de consulta (chefia)
+
+1. A pessoa abre o aplicativo e toca em **Criar conta**.
+2. Você abre **Administração → Usuários**, marca **acesso liberado**, escolhe o papel **Gestor (só consulta)** e salva.
+3. Ela passa a ver só as abas **Resumo** e **Painel**. Não consegue lançar nem alterar nada.
 
 ## Se algo der errado
 

@@ -17,6 +17,7 @@ const USUARIOS = [
   { id: '22222222-2222-4222-8222-222222222222', email: 'pd@teste.com', nome: 'Paulo P&D', papel: 'pd', ativo: true },
   { id: '33333333-3333-4333-8333-333333333333', email: 'operador@teste.com', nome: 'Olga Operadora', papel: 'operador', ativo: true },
   { id: '44444444-4444-4444-8444-444444444444', email: 'novo@teste.com', nome: 'Nino Novo', papel: 'operador', ativo: false },
+  { id: '55555555-5555-4555-8555-555555555555', email: 'gestor@teste.com', nome: 'Gil Gestor', papel: 'gestor', ativo: true },
 ];
 
 function acharBinarios() {
@@ -158,6 +159,14 @@ function subirApi(banco, porta) {
       const saida = comoUsuario(
         `select coalesce(json_agg(x), '[]'::json) from (${SELECAO_OPS}${filtros.length ? ' where ' + filtros.join(' and ') : ''}
          order by o.sincronizado_em, o.id offset ${Number(q.get('offset') || 0)} limit ${Number(q.get('limit') || 1000)}) x`,
+      );
+      return saida === null ? undefined : responder(200, saida);
+    }
+    if (caminho === '/rest/v1/ops_historico' && req.method === 'GET') {
+      const saida = comoUsuario(
+        `select coalesce(json_agg(h order by h.id), '[]'::json) from (
+           select id, op_id, em, ate, por, criou, mudancas from public.ops_historico
+           where op_id = ${lit((q.get('op_id') || '').replace(/^eq\./, ''))}) h`,
       );
       return saida === null ? undefined : responder(200, saida);
     }

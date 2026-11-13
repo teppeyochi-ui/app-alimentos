@@ -24,7 +24,7 @@ function json(corpo: unknown, status = 200): Response {
   });
 }
 
-/** Confere, com o próprio token de quem chamou, se é um usuário ativo. */
+/** Confere, com o próprio token de quem chamou, se é um usuário ativo que lança (o gestor só consulta). */
 async function usuarioAtivo(req: Request): Promise<boolean> {
   const autorizacao = req.headers.get('Authorization');
   if (!autorizacao) return false;
@@ -32,8 +32,8 @@ async function usuarioAtivo(req: Request): Promise<boolean> {
     global: { headers: { Authorization: autorizacao } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data, error } = await sb.rpc('usuario_ativo');
-  return !error && data === true;
+  const { data, error } = await sb.rpc('papel_atual');
+  return !error && (data === 'operador' || data === 'pd' || data === 'admin');
 }
 
 Deno.serve(async (req) => {

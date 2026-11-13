@@ -20,7 +20,7 @@ const { playwright, RAIZ, CAPTURAS, servirPasta, verificar, totalFalhas, fotoDeT
 const { subirBanco, subirApi, USUARIOS, SENHA } = require('./servidor-banco.cjs');
 
 const PORTA_API = 54329;
-const [ADMIN, PD, OPERADOR, NOVO] = USUARIOS;
+const [ADMIN, PD, OPERADOR, NOVO, GESTOR] = USUARIOS;
 
 (async () => {
   fs.mkdirSync(CAPTURAS, { recursive: true });
@@ -215,6 +215,41 @@ const [ADMIN, PD, OPERADOR, NOVO] = USUARIOS;
     await sincronizado(pc.p);
     verificar(um(`select nota_aparencia_ia from public.ops_indicadores where id = '${id1}'`) === '7.5', 'nota da IA gravada no servidor e disponível na view');
     await pc.p.screenshot({ path: path.join(CAPTURAS, '14-avaliacao-ia.png'), fullPage: true });
+
+    console.log('Histórico de alterações: quem mudou o quê');
+    await pc.p.goto(base + '#painel');
+    await pc.p.locator('tr.clicavel', { hasText: '20109999' }).click();
+    await pc.p.getByRole('button', { name: 'Ver quem alterou e o quê' }).click();
+    await pc.p.locator('dialog[open] .historico > li').first().waitFor({ timeout: 15000 });
+    const historico = (await pc.p.locator('dialog[open] .historico').innerText()).replace(/\s+/g, ' ');
+    verificar(/Alterou depois de encerrada .* Paulo P&D Caixas: 66 → 67/.test(historico), 'a correção do P&D aparece: caixas de 66 para 67, depois de encerrada');
+    verificar(historico.includes('Criou a OP') && historico.includes('Olga Operadora'), 'a criação aparece em nome da operadora');
+    verificar(historico.includes('Encerrou a OP'), 'o encerramento aparece');
+    verificar(historico.includes('Avaliação da foto por IA: sem avaliação → nota 7,5'), 'a avaliação da IA aparece');
+    verificar(historico.indexOf('Avaliação da foto por IA') < historico.indexOf('Criou a OP'), 'do mais recente para o mais antigo');
+    await pc.p.screenshot({ path: path.join(CAPTURAS, '15-historico.png'), fullPage: true });
+    await pc.p.locator('dialog[open]').getByRole('button', { name: 'Fechar' }).click();
+    verificar(um(`select count(*) from public.ops_historico where op_id = '${id1}' and por = '${PD.id}' and mudancas -> 'caixas' = '{"de": 66, "para": 67}'`) === '1', 'no banco: um registro da correção, com o valor de antes e o de depois');
+
+    console.log('Gestor: só consulta');
+    const chefe = await abrir({ viewport: { width: 360, height: 740 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+    await entrar(chefe.p, GESTOR);
+    await chefe.p.getByRole('heading', { name: 'Acompanhamento da produção' }).waitFor({ timeout: 20000 });
+    verificar(true, 'o gestor entra direto no Resumo');
+    verificar((await chefe.p.locator('.abas a').allInnerTexts()).join('|').replace(/\s+/g, '') === 'Resumo|Painel', 'vê só as abas Resumo e Painel');
+    await chefe.p.goto(base + '#lancar');
+    await chefe.p.getByRole('heading', { name: 'Acompanhamento da produção' }).waitFor();
+    verificar(await chefe.p.getByRole('button', { name: 'Nova OP' }).count() === 0, 'não chega à tela de lançamento');
+    await chefe.p.getByRole('button', { name: 'Tudo', exact: true }).click();
+    await chefe.p.locator('.op-cartao', { hasText: '20109999' }).first().click();
+    verificar(await chefe.p.locator('dialog[open]').getByRole('button', { name: 'Abrir no lançamento' }).count() === 0, 'no detalhe, não tem "Abrir no lançamento"');
+    await chefe.p.getByRole('button', { name: 'Ver quem alterou e o quê' }).click();
+    await chefe.p.locator('dialog[open] .historico > li').first().waitFor({ timeout: 15000 });
+    verificar(true, 'o gestor consulta o histórico de alterações');
+    await chefe.p.screenshot({ path: path.join(CAPTURAS, '16-gestor.png') });
+    const antesGestor = chamadas.salvar_op;
+    await chefe.p.locator('dialog[open]').getByRole('button', { name: 'Fechar' }).click();
+    verificar(chamadas.salvar_op === antesGestor, 'e não envia nenhuma gravação');
 
     console.log('O celular do operador recebe a correção');
     await p.getByRole('button', { name: /Abrir menu/ }).click();

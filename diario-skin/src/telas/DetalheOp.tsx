@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { BarraDestino, Dialogo, LegendaDestino } from '../componentes/Basicos';
 import { CartaoAnaliseIa } from '../componentes/AnaliseIa';
 import { Fotos } from '../componentes/Fotos';
+import { HistoricoOp } from '../componentes/HistoricoOp';
 import { calcular, parametrosAlterados, parametrosDaReceita, receitaVigente, temParametros, type Indicadores } from '../lib/calc';
 import { MOTIVOS_RETRABALHO, PARAMETROS } from '../lib/constantes';
 import { dataBR, dataHoraBR, gramas, kg, num, pct } from '../lib/formato';
@@ -157,6 +158,7 @@ export function DetalheOp({ op, e, aoFechar, abrirNoLancamento, aoComparar }: De
           <CartaoAnaliseIa analise={op.analise_ia} />
         </div>
       )}
+      <HistoricoOp key={op.id} opId={op.id} />
       {op.observacoes && (
         <div>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Observações</div>

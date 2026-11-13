@@ -5,6 +5,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { BUCKET_FOTOS, CHAVES_PARAMETROS, MOTIVOS_RETRABALHO } from './constantes';
 import { SUPABASE_CHAVE, SUPABASE_URL } from './config';
+import type { RegistroHistorico } from './historico';
 import type {
   AnaliseIa, ChaveParametro, Foto, MoldeInfo, Op, OpLocal, Papel, Parada, Parametros, Perfil, Produto, ReceitaPadrao, Retrabalho,
 } from './tipos';
@@ -53,6 +54,8 @@ export interface Servidor {
   apagarFotos(caminhos: string[]): Promise<void>;
   urlFoto(caminho: string): Promise<string | null>;
   lerTelas(fotos: Blob[]): Promise<LeituraTelas>;
+  /** Histórico de alterações de uma OP (quem mudou o quê), do mais antigo para o mais novo. */
+  baixarHistorico(opId: string): Promise<RegistroHistorico[]>;
   /** Avalia as fotos do produto final contra os parâmetros e o histórico (contexto). */
   analisarOp(contexto: Record<string, unknown>, fotos: Blob[]): Promise<RespostaAnalise>;
   // administração
@@ -176,7 +179,7 @@ function receitaDaLinha(l: Linha): ReceitaPadrao {
   return { ...params, id: Number(l.id), vigente_desde: String(l.vigente_desde), ciclo_teorico_s: numero(l.ciclo_teorico_s) };
 }
 
-const PAPEIS: Papel[] = ['operador', 'pd', 'admin'];
+const PAPEIS: Papel[] = ['operador', 'pd', 'admin', 'gestor'];
 export function perfilDaLinha(l: Linha): Perfil {
   const papel = PAPEIS.includes(l.papel as Papel) ? (l.papel as Papel) : 'operador';
   return { id: String(l.id), nome: String(l.nome ?? ''), papel, ativo: l.ativo === true };
@@ -329,6 +332,21 @@ export function servidorSupabase(): Servidor {
     async lerTelas(fotos) {
       const d = (await chamarFuncao('ler-telas', { fotos: await emBase64(fotos) })) as Partial<LeituraTelas>;
       return { telas: d.telas ?? [], valores: d.valores ?? {}, duvidas: d.duvidas ?? '' };
+    },
+
+    async baixarHistorico(opId) {
+      const { data, error, status } = await sb
+        .from('ops_historico').select('id,op_id,em,ate,por,criou,mudancas').eq('op_id', opId).order('id', { ascending: true });
+      if (error) throw classificar(error, status);
+      return ((data ?? []) as Linha[]).map((l) => ({
+        id: Number(l.id),
+        op_id: String(l.op_id),
+        em: String(l.em),
+        ate: String(l.ate ?? l.em),
+        por: texto(l.por),
+        criou: l.criou === true,
+        mudancas: l.mudancas && typeof l.mudancas === 'object' ? (l.mudancas as RegistroHistorico['mudancas']) : {},
+      }));
     },
 
     async analisarOp(contexto, fotos) {

@@ -275,7 +275,8 @@ export function podeEditar(op: Pick<Op, 'status'>, perfil: Perfil | null): boole
   if (!perfil?.ativo) return false;
   if (perfil.papel === 'admin') return true;
   if (perfil.papel === 'pd') return op.status !== 'cancelada';
-  return op.status === 'aberta';
+  if (perfil.papel === 'operador') return op.status === 'aberta';
+  return false; // gestor: só consulta
 }
 
 // ------------------------------------------------------------------ alterações de OP

@@ -6,7 +6,7 @@
  * atualização publicada aparece na abertura seguinte do app.
  * Mude VERSION a cada atualização para descartar o cache antigo.
  */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const CACHE = 'treino21k-' + VERSION;
 
 const APP_SHELL = [
@@ -15,6 +15,7 @@ const APP_SHELL = [
   './styles.css',
   './core.js',
   './graficos.js',
+  './ia.js',
   './app.js',
   './manifest.webmanifest',
   './icones/icone-192.png',

@@ -95,7 +95,7 @@ jobs:
           cd ..
           mkdir -p _site/treino-21k
           cd treino-21k
-          cp index.html styles.css app.js core.js graficos.js sw.js manifest.webmanifest ../_site/treino-21k/
+          cp index.html styles.css app.js core.js graficos.js ia.js sw.js manifest.webmanifest ../_site/treino-21k/
           cp -r icones ../_site/treino-21k/
           cd ..
           touch _site/.nojekyll

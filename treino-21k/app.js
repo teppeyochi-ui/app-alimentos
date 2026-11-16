@@ -1,13 +1,16 @@
 /*
- * app.js — Interface do 21K Rio 2027: plano, registro dos treinos, painel de
- * evolução, exportação para o Claude, ajustes e instalação como aplicativo.
- * Os cálculos ficam em core.js e o desenho dos gráficos em graficos.js.
+ * app.js — Interface do app de treino: plano, registro dos treinos, painel de
+ * evolução, perfil e objetivo com criação do treino pela IA, exportação para o
+ * Claude, ajustes e instalação como aplicativo.
+ * Os cálculos ficam em core.js, a IA em ia.js e o desenho dos gráficos em graficos.js.
  */
 (function () {
   'use strict';
-  const N = window.Nucleo, G = window.Graficos;
-  const VERSAO = '1.0.0';
+  const N = window.Nucleo, G = window.Graficos, IA = window.IA;
+  const VERSAO = '1.1.0';
   const CHAVE_UI = 'r21k_ui'; // preferências de tela (ficam fora do backup)
+  const CHAVE_IA = 'r21k_ia'; // chave da API e modelo (ficam fora do backup)
+  const CHAVE_ANTERIOR = 'r21k_anterior'; // dados de antes da última troca de plano
   const $ = (s, r) => (r || document).querySelector(s);
   const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const v = (x) => (x == null ? '' : esc(x));
@@ -16,27 +19,33 @@
   // Números no formato brasileiro (vírgula decimal).
   const km = (x) => (Math.round(x * 10) / 10).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
   const dec = (x, n) => x.toLocaleString('pt-BR', { minimumFractionDigits: n, maximumFractionDigits: n });
+  const dataCheia = (d) => N.fd(d) + '/' + d.getFullYear();
 
   function ler(chave) { try { return localStorage.getItem(chave); } catch (e) { return null; } }
   function lerJson(chave) { try { return JSON.parse(ler(chave)) || {}; } catch (e) { return {}; } }
+  function gravar(chave, valor) { try { localStorage.setItem(chave, valor); return true; } catch (e) { return false; } }
+  function remover(chave) { try { localStorage.removeItem(chave); } catch (e) { /* nada a remover */ } }
 
   let D = N.carregar(ler(N.CHAVE));
-  const UI = Object.assign({ periodo: 'tudo', semFaixa: false }, lerJson(CHAVE_UI));
+  const UI = Object.assign({ periodo: 'tudo', semFaixa: false, inicioPlano: '' }, lerJson(CHAVE_UI));
+  const CFG = Object.assign({ chave: '', modelo: IA.MODELOS[0].id }, lerJson(CHAVE_IA));
   let aba = 'plano';
   let pedidoInstalar = null; // evento do navegador que permite mostrar o botão "Instalar"
   let pediuPersistencia = false;
   let redesenhar = null; // redesenha os gráficos quando a largura muda
+  let rascunho = null; // plano criado pela IA, esperando a pessoa aprovar
+  let gerando = null; // { cancelar, inicio, texto } enquanto a IA trabalha
+  let erroIa = '';
 
   function salvar() {
-    try { localStorage.setItem(N.CHAVE, JSON.stringify(D)); }
-    catch (e) { alert('Não consegui salvar neste navegador.'); return; }
+    if (!gravar(N.CHAVE, JSON.stringify(D))) { alert('Não consegui salvar neste navegador.'); return; }
     // Pede ao navegador para não apagar os dados quando faltar espaço no aparelho.
     if (!pediuPersistencia && navigator.storage && navigator.storage.persist) {
       pediuPersistencia = true;
       navigator.storage.persist().catch(() => {});
     }
   }
-  function salvarUi() { try { localStorage.setItem(CHAVE_UI, JSON.stringify(UI)); } catch (e) { /* preferência opcional */ } }
+  function salvarUi() { gravar(CHAVE_UI, JSON.stringify(UI)); }
 
   let relogioAviso = 0;
   function aviso(msg) {
@@ -44,7 +53,13 @@
     el.textContent = msg;
     el.hidden = false;
     clearTimeout(relogioAviso);
-    relogioAviso = setTimeout(() => { el.hidden = true; }, 2600);
+    relogioAviso = setTimeout(() => { el.hidden = true; }, 2800);
+  }
+
+  function copiarTexto(texto, campo) {
+    const reserva = () => { if (campo) { campo.select(); document.execCommand('copy'); aviso('Copiado!'); } else aviso('Não consegui copiar.'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(texto).then(() => aviso('Copiado!'), reserva);
+    else reserva();
   }
 
   const instalado = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -53,18 +68,29 @@
   // ---------- moldura ----------
 
   function cabecalho() {
-    const a = agora(), dias = N.diasParaProva(a);
-    const mesmoDia = a.toDateString() === N.PROVA.toDateString();
+    const a = agora(), dias = N.diasParaProva(D, a);
+    const mesmoDia = a.toDateString() === N.dataProva(D).toDateString();
     const falta = dias > 1 ? `Faltam ${dias} dias` : dias === 1 ? 'Falta 1 dia' : mesmoDia ? 'A prova é hoje' : 'Prova realizada';
-    $('#hdr').textContent = `${falta} · ${N.fechadas(D)}/${N.SEMANAS} semanas fechadas · meta: completar bem`;
+    const meta = N.alvo(D).meta;
+    $('#titulo').textContent = N.titulo(D);
+    $('#hdr').textContent = `${falta} · ${N.fechadas(D)}/${N.nSemanas(D)} semanas fechadas${meta ? ' · meta: ' + meta : ''}`;
   }
 
-  const TELAS = { plano: telaPlano, evolucao: telaEvolucao, exportar: telaExportar, ajustes: telaAjustes };
+  const TELAS = { plano: telaPlano, evolucao: telaEvolucao, perfil: telaPerfil, exportar: telaExportar, ajustes: telaAjustes };
 
   function render() {
     redesenhar = null;
     cabecalho();
     TELAS[aba]();
+  }
+
+  // Redesenha a tela sem tirar a pessoa do ponto em que estava, nem apagar o que ela digitava em Ajustes.
+  function renderNoLugar() {
+    const y = window.scrollY;
+    const digitado = ['#pr', '#bk'].map((s) => ($(s) ? $(s).value : null));
+    render();
+    ['#pr', '#bk'].forEach((s, i) => { if ($(s) && digitado[i] != null) $(s).value = digitado[i]; });
+    window.scrollTo(0, y);
   }
 
   function irPara(nova) {
@@ -81,7 +107,7 @@
   // Leva a tela até a semana atual (ou até o convite para instalar, que fica logo acima dela).
   // Na semana 1 não rola: o começo da página já mostra tudo.
   function mostrarSemanaAtual() {
-    const cw = N.semanaAtual(agora());
+    const cw = N.semanaAtual(D, agora());
     const el = $('#app .faixa') || $('#w' + cw);
     if (cw > 1 && el) requestAnimationFrame(() => el.scrollIntoView());
     else window.scrollTo(0, 0);
@@ -108,22 +134,26 @@
     return '';
   }
 
+  const LEGENDA_CODIGOS = '<span><i class="tag tag-A">A</i>água</span><span><i class="tag tag-B">B</i>cinto, isotônico no calor</span>' +
+    '<span><i class="tag tag-C">C</i>colete + carbo</span><span><i class="tag tag-D">D</i>protocolo de prova</span>';
+
   function telaPlano() {
-    const a = agora(), cw = N.semanaAtual(a);
+    const a = agora(), P = N.plano(D), cw = N.semanaAtual(D, a), fase = N.fase(D, a);
     const hoje = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
-    let h = '<div class="card"><small>Toque no treino para registrar.</small><div class="chips">' +
-      '<span><i class="tag tag-A">A</i>água</span><span><i class="tag tag-B">B</i>cinto, isotônico no calor</span>' +
-      '<span><i class="tag tag-C">C</i>colete + carbo</span><span><i class="tag tag-D">D</i>protocolo de prova</span>' +
-      '<span>N = Novablast 5 · E = Evo SL</span></div></div>';
-    for (let w = 1; w <= N.SEMANAS; w++) {
+    let h = '<div class="card"><small>Toque no treino para registrar.</small><div class="chips">' + LEGENDA_CODIGOS +
+      (P.embutido ? '<span>N = Novablast 5 · E = Evo SL</span>' : '') + '</div>' +
+      (P.orientacoes ? `<details class="orienta"><summary>Orientações do plano</summary><p>${esc(P.orientacoes)}</p></details>` : '') + '</div>';
+    for (let w = 1; w <= P.semanas.length; w++) {
       const ss = N.sessoes(D, w), wk = D.weeks[w] || {};
+      const selo = w !== cw ? '' : fase === 'antes' ? ` <span class="selo">começa ${N.fd(P.inicio)}</span>` : fase === 'durante' ? ' <span class="selo">esta semana</span>' : '';
       if (w === cw) h += faixaInstalar();
-      h += `<section class="card wk${w === cw ? ' atual' : ''}" id="w${w}"><div class="wk-topo"><h3>S${w} · ${N.fd(N.inicioSemana(w))}–${N.fd(N.fimSemana(w))}${w === cw ? ' <span class="selo">esta semana</span>' : ''}</h3><span class="km">${km(N.kmFeitos(D, w))}/${km(N.kmPlanejados(D, w))} km</span></div>`;
+      h += `<section class="card wk${w === cw && fase === 'durante' ? ' atual' : ''}" id="w${w}"><div class="wk-topo"><h3>S${w} · ${N.fd(N.inicioSemana(D, w))}–${N.fd(N.fimSemana(D, w))}${P.focos[w - 1] ? ` <span class="foco">${esc(P.focos[w - 1])}</span>` : ''}${selo}</h3><span class="km">${km(N.kmFeitos(D, w))}/${km(N.kmPlanejados(D, w))} km</span></div>`;
+      if (!ss.length) h += '<p class="vazio">Semana sem corrida no plano.</p>';
       ss.forEach((s) => {
-        const l = D.logs[s.k], dia = N.dataSessao(w, s.d);
+        const l = D.logs[s.k], dia = N.dataSessao(D, w, s.d);
         const st = !l ? 'pendente' : l.status === 'parcial' || l.status === 'nao' ? l.status : 'feito';
         const feito = l && l.status !== 'nao' ? ` · ${km(+l.km || 0)} km em ${v(l.tempo || '–')} (${N.fmtRitmo(N.ritmo(l))}/km)` : '';
-        h += `<button type="button" class="ses" data-acao="treino" data-k="${s.k}"><span class="tag tag-${s.c}">${s.c}</span><span class="tx">${esc(s.t)} · ${s.s}<small>${dia.getTime() === hoje ? '<span class="hoje">Hoje</span> · ' : ''}${N.DIA[s.d]} ${N.fd(dia)}${feito}</small></span><span class="st st-${st}" role="img" aria-label="${NOME_STATUS[st]}">${ICONE[st]}</span></button>`;
+        h += `<button type="button" class="ses" data-acao="treino" data-k="${s.k}"><span class="tag tag-${s.c}">${s.c}</span><span class="tx">${esc(s.t)}${s.s ? ' · ' + s.s : ''}<small>${dia.getTime() === hoje ? '<span class="hoje">Hoje</span> · ' : ''}${N.DIA[s.d]} ${N.fd(dia)}${feito}</small></span><span class="st st-${st}" role="img" aria-label="${NOME_STATUS[st]}">${ICONE[st]}</span></button>`;
       });
       h += '<div class="wk-pe">' + (wk.closed
         ? `<small>Semana fechada ${wk.sent ? 'e enviada ao Claude' : '· ainda não enviada'} · <a href="#" data-acao="semana" data-w="${w}">editar</a></small>`
@@ -133,19 +163,28 @@
   }
 
   function opcoes(vals, rotulos, sel) {
-    return vals.map((x, i) => `<option value="${x}"${x == sel ? ' selected' : ''}>${rotulos ? rotulos[i] : x}</option>`).join('');
+    return vals.map((x, i) => `<option value="${esc(x)}"${x == sel ? ' selected' : ''}>${esc(rotulos ? rotulos[i] : x)}</option>`).join('');
+  }
+
+  // Tênis sugerido para o treino: o indicado pelo plano original ou o primeiro do perfil.
+  function tenisSugerido(s, nomes) {
+    const indicado = s.s === 'E' ? 'Evo SL' : s.s ? 'Novablast 5' : '';
+    return nomes.indexOf(indicado) >= 0 ? indicado : nomes[0] || 'Outro';
   }
 
   function abrirTreino(k) {
     const [ws, d] = k.split('-'), w = +ws, s = N.sessoes(D, w).find((x) => x.k === k);
-    const l = D.logs[k] || { status: 'feito', km: s.km, tenis: s.s === 'E' ? 'Evo SL' : 'Novablast 5' };
+    const nomes = N.tenis(D).map((t) => t.nome);
+    const l = D.logs[k] || { status: 'feito', km: s.km, tenis: tenisSugerido(s, nomes) };
+    // O tênis já registrado continua na lista mesmo que tenha saído do perfil.
+    const listaTenis = nomes.concat(l.tenis && l.tenis !== 'Outro' && nomes.indexOf(l.tenis) < 0 ? [l.tenis] : [], ['Outro']);
     const temSuor = /suor/i.test(s.t) || l.pa || l.pd || l.liq;
     const f = $('#frm'), dlg = $('#dlg');
-    f.innerHTML = `<h3>S${w} · ${N.DIA[d]} ${N.fd(N.dataSessao(w, d))}</h3><p class="sub">${esc(s.t)} · código ${s.c} · tênis ${s.s}</p>
+    f.innerHTML = `<h3>S${w} · ${N.DIA[d]} ${N.fd(N.dataSessao(D, w, d))}</h3><p class="sub">${esc(s.t)} · código ${s.c}${s.s ? ' · tênis ' + s.s : ''}</p>
 <label>Status<select name="status">${opcoes(['feito', 'parcial', 'nao'], ['Feito', 'Parcial', 'Não fiz'], l.status)}</select></label>
 <div class="row"><label>Km<input name="km" type="number" step="0.01" min="0" inputmode="decimal" value="${v(l.km)}"></label><label>Tempo (mm:ss ou h:mm:ss)<input name="tempo" inputmode="text" autocomplete="off" value="${v(l.tempo)}" placeholder="45:30"></label></div>
 <div class="row"><label>FC média<input name="fc" type="number" min="0" inputmode="numeric" value="${v(l.fc)}"></label><label>Esforço (0–10)<input name="esf" type="number" min="0" max="10" inputmode="numeric" value="${v(l.esf)}"></label></div>
-<label>Tênis<select name="tenis">${opcoes(['Evo SL', 'Novablast 5', 'Outro'], null, l.tenis)}</select></label>
+<label>Tênis<select name="tenis">${opcoes(listaTenis, null, l.tenis)}</select></label>
 <label>Hidratação/carbo usados<input name="hid" value="${v(l.hid)}" placeholder="ex.: 500 mL de isotônico + 1 gel"></label>
 <div class="row"><label>Dor (0–10)<input name="dor" type="number" min="0" max="10" inputmode="numeric" value="${v(l.dor)}"></label><label>Onde<input name="dorLocal" value="${v(l.dorLocal)}"></label></div>
 <label>Observações<input name="obs" value="${v(l.obs)}"></label>
@@ -176,9 +215,9 @@
       }
       const { pt, pk, ...log } = o;
       D.logs[k] = log;
-      const base = N.basePlano(w, d);
-      const kmPlan = pk === '' ? base[2] : +pk;
-      if (pt !== base[1] || kmPlan !== base[2]) D.ov[k] = { t: pt, km: kmPlan }; else delete D.ov[k];
+      const base = N.basePlano(D, w, d);
+      const kmPlan = pk === '' ? base.km : +pk;
+      if (pt !== base.t || kmPlan !== base.km) D.ov[k] = { t: pt, km: kmPlan }; else delete D.ov[k];
       salvar();
       render();
     };
@@ -188,6 +227,7 @@
   function abrirSemana(w) {
     const x = D.weeks[w] || {};
     const f = $('#frm'), dlg = $('#dlg');
+    f.oninput = f.onchange = null;
     f.innerHTML = `<h3>Fechar semana ${w}</h3><p class="sub">${km(N.kmFeitos(D, w))} de ${km(N.kmPlanejados(D, w))} km registrados.</p>
 <label>Sono/cansaço na semana<select name="sono">${opcoes(['bom', 'médio', 'ruim'], null, x.sono || 'bom')}</select></label>
 <label>Calor ou algo fora do normal<input name="calor" value="${v(x.calor)}"></label><label>Observações da semana<input name="obs" value="${v(x.obs)}"></label>
@@ -217,11 +257,11 @@
   function telaEvolucao() {
     const a = agora();
     const P = N.painel(D, a);
+    const embutido = N.plano(D).embutido;
     const temRegistro = P.treinosFeitos > 0;
-    const progresso = Math.max(0, Math.min(100, (a - N.INICIO) / (N.PROVA - N.INICIO) * 100));
 
     // Recorte dos gráficos: o plano inteiro ou só até a semana atual (mínimo de 6 semanas).
-    const nSem = UI.periodo === 'hoje' ? Math.max(6, P.semana) : N.SEMANAS;
+    const nSem = UI.periodo === 'hoje' ? Math.max(Math.min(6, P.n), P.semana) : P.n;
     const S = P.semanas.slice(0, nSem);
     const sem = (x) => `S${x.w}`;
     const periodo = (x) => `${N.fd(x.ini)}–${N.fd(x.fim)}`;
@@ -261,9 +301,9 @@
 
     let h = `<div class="card heroi">
 <div class="heroi-num">${P.dias}</div>
-<div class="heroi-txt"><b>${P.dias === 1 ? 'dia para a prova' : 'dias para a prova'}</b><span>Sábado, ${N.fd(N.PROVA)}/${N.PROVA.getFullYear()} · ${km(N.KM_PROVA)} km</span></div>
-<div class="medidor" role="img" aria-label="Semana ${P.semana} de ${N.SEMANAS} do plano"><i style="width:${progresso.toFixed(1)}%"></i></div>
-<div class="medidor-pe"><span>Semana ${P.semana} de ${N.SEMANAS}</span><span>${P.fechadas} ${P.fechadas === 1 ? 'fechada' : 'fechadas'}</span></div>
+<div class="heroi-txt"><b>${P.dias === 1 ? 'dia para a prova' : 'dias para a prova'}</b><span>${N.DIA[N.diaDaSemana(P.prova)]}, ${dataCheia(P.prova)} · ${km(P.kmProva)} km</span></div>
+<div class="medidor" role="img" aria-label="Semana ${P.semana} de ${P.n} do plano"><i style="width:${P.progresso.toFixed(1)}%"></i></div>
+<div class="medidor-pe"><span>${P.fase === 'antes' ? `Começa em ${dataCheia(P.inicio)}` : `Semana ${P.semana} de ${P.n}`}</span><span>${P.fechadas} ${P.fechadas === 1 ? 'fechada' : 'fechadas'}</span></div>
 </div>`;
 
     if (!temRegistro) h += '<div class="faixa"><p>Ainda não há treinos registrados. Os gráficos já mostram o plano e vão se preenchendo conforme você registra na aba Plano.</p></div>';
@@ -271,7 +311,7 @@
     h += `<div class="kpi">
 <div><span>Km registrados</span><b>${km(P.kmTotal)} <small>km</small></b><em>${P.kmPrevisto ? `de ${km(P.kmPrevisto)} km previstos até hoje` : 'nenhum treino previsto ainda'}</em></div>
 <div><span>Treinos feitos</span><b>${P.treinosFeitos}${P.treinosPrevistos ? ` <small>de ${P.treinosPrevistos}</small>` : ''}</b><em>${pct == null ? 'nenhum treino previsto ainda' : `${pct}% dos previstos${P.parciais ? ` · ${P.parciais} ${P.parciais === 1 ? 'parcial' : 'parciais'}` : ''}`}</em></div>
-<div><span>Maior corrida</span><b>${ou(P.maiorCorrida, (x) => km(x) + ' <small>km</small>')}</b><em>prova: ${km(N.KM_PROVA)} km</em></div>
+<div><span>Maior corrida</span><b>${ou(P.maiorCorrida, (x) => km(x) + ' <small>km</small>')}</b><em>prova: ${km(P.kmProva)} km</em></div>
 <div><span>Ritmo em Z2</span><b>${rz.atual == null ? '–' : N.fmtRitmo(rz.atual) + ' <small>/km</small>'}</b>${dRitmo}</div>
 <div><span>FC média em Z2</span><b>${fz.atual == null ? '–' : Math.round(fz.atual) + ' <small>bpm</small>'}</b>${dFc}</div>
 <div><span>Metros por batimento</span><b>${efTxt}</b>${dEf}</div>
@@ -314,14 +354,15 @@
 
     h += '<div class="card"><h3>Testes de suor</h3>' + (P.suor.length
       ? P.suor.map((x) => `<div class="lista-linha"><span>S${x.w} · ${N.DIA[x.d]}</span><span><b>${dec(x.taxa, 2)} L/h</b> · perda de ${dec(x.perda, 1)}% do peso${x.perda > 2 ? '<span class="sinal">acima de 2%</span>' : ''}</span></div>`).join('')
-      : '<p class="vazio">Registre peso antes, peso depois e quanto bebeu (S5 e S10).</p>') + '</div>';
+      : `<p class="vazio">Registre peso antes, peso depois e quanto bebeu num treino longo${embutido ? ' (S5 e S10)' : ''}.</p>`) + '</div>';
 
-    const usoEvo = P.tenis.evo / P.tenis.vidaEvo;
-    h += `<div class="card"><h3>Tênis</h3>
-<div class="tenis" style="margin-top:10px"><div class="tenis-topo"><span>Evo SL</span><b>${km(P.tenis.evo)} de ~${P.tenis.vidaEvo} km</b></div>
-<div class="medidor${usoEvo >= 1 ? ' passou' : usoEvo >= 0.8 ? ' atencao' : ''}" role="img" aria-label="Evo SL: ${Math.round(usoEvo * 100)}% da vida útil estimada"><i style="width:${Math.min(100, usoEvo * 100).toFixed(1)}%"></i></div>
-<div class="medidor-pe"><span>${usoEvo >= 1 ? 'Passou da vida útil estimada' : usoEvo >= 0.8 ? 'Perto do fim da vida útil' : `${Math.round(usoEvo * 100)}% da vida útil estimada`}</span><span>${usoEvo < 1 ? `restam ~${km(P.tenis.vidaEvo - P.tenis.evo)} km` : ''}</span></div></div>
-<div class="tenis"><div class="tenis-topo"><span>Novablast 5</span><b>${km(P.tenis.nova)} km</b></div></div></div>`;
+    h += '<div class="card"><h3>Tênis</h3>' + (P.tenis.length ? P.tenis.map((t) => {
+      if (!t.vida) return `<div class="tenis"><div class="tenis-topo"><span>${esc(t.nome)}</span><b>${km(t.km)} km</b></div></div>`;
+      const uso = t.km / t.vida;
+      return `<div class="tenis"><div class="tenis-topo"><span>${esc(t.nome)}</span><b>${km(t.km)} de ~${km(t.vida)} km</b></div>
+<div class="medidor${uso >= 1 ? ' passou' : uso >= 0.8 ? ' atencao' : ''}" role="img" aria-label="${esc(t.nome)}: ${Math.round(uso * 100)}% da vida útil estimada"><i style="width:${Math.min(100, uso * 100).toFixed(1)}%"></i></div>
+<div class="medidor-pe"><span>${uso >= 1 ? 'Passou da vida útil estimada' : uso >= 0.8 ? 'Perto do fim da vida útil' : `${Math.round(uso * 100)}% da vida útil estimada`}</span><span>${uso < 1 ? `restam ~${km(t.vida - t.km)} km` : ''}</span></div></div>`;
+    }).join('') : '<p class="vazio">Cadastre seus tênis na aba Perfil para acompanhar os km de cada um.</p>') + '</div>';
 
     $('#app').innerHTML = h;
 
@@ -331,14 +372,14 @@
 
   function desenhar(P, S) {
     const rotulos = S.map((x) => 'S' + x.w);
-    const atual = P.semana - 1 < S.length ? P.semana - 1 : -1;
+    const atual = P.fase === 'durante' && P.semana - 1 < S.length ? P.semana - 1 : -1;
     const titulo = (i) => `S${S[i].w} · ${N.fd(S[i].ini)}–${N.fd(S[i].fim)}`;
     const col = (f) => S.map(f);
     const maximo = (a) => Math.max.apply(null, a.filter((x) => x != null).concat([0]));
     const minimo = (a) => Math.min.apply(null, a.filter((x) => x != null));
     const comum = { rotulos, atual };
     const txt = (x, f) => (x == null ? '–' : f(x));
-    const emAberto = (x) => x.w === P.semana && x.longoPendente;
+    const emAberto = (x) => P.fase === 'durante' && x.w === P.semana && x.longoPendente;
 
     G.porSemana($('#g-km'), Object.assign({}, comum, {
       altura: 190,
@@ -356,13 +397,13 @@
 
     G.porSemana($('#g-longo'), Object.assign({}, comum, {
       altura: 190,
-      y: Object.assign(G.escala(0, Math.max(N.KM_PROVA, maximo(col((x) => x.longoFeito))), null, 5), { fmt: String }),
+      y: Object.assign(G.escala(0, Math.max(P.kmProva, maximo(col((x) => x.longoPlan)), maximo(col((x) => x.longoFeito))), null, 5), { fmt: String }),
       camadas: [
         { tipo: 'area', valores: col((x) => x.longoPlan), classe: 'c-plano' },
         // Na semana em andamento, o ponto só entra depois do longão: antes disso a linha "cairia" à toa.
         { tipo: 'linha', valores: col((x) => (emAberto(x) ? null : x.longoFeito)), classe: 'c-feito', rotuloFinal: (q) => km(q) + ' km' },
       ],
-      refs: [{ y: N.KM_PROVA, rotulo: `Prova · ${km(N.KM_PROVA)} km` }],
+      refs: [{ y: P.kmProva, rotulo: `Prova · ${km(P.kmProva)} km` }],
       dica: (i) => ({ titulo: titulo(i), linhas: [
         { chave: 'caixa', classe: 'c-plano', rotulo: 'Planejado', valor: km(S[i].longoPlan) + ' km' },
         { chave: 'linha', classe: 'c-feito', rotulo: emAberto(S[i]) ? 'Feito até agora' : 'Feito', valor: txt(S[i].longoFeito, (q) => km(q) + ' km') },
@@ -432,6 +473,258 @@
     ] }));
   }
 
+  // ---------- perfil, objetivo e criação do treino ----------
+
+  const ROTULO_EXPERIENCIA = { iniciante: 'Estou começando (ou voltando)', menos1: 'Corro há menos de 1 ano', '1a3': 'Corro há 1 a 3 anos', mais3: 'Corro há mais de 3 anos' };
+  const DIA_CURTO = { seg: 'Seg', ter: 'Ter', qua: 'Qua', qui: 'Qui', sex: 'Sex', sab: 'Sáb', dom: 'Dom' };
+
+  function inicioEscolhido() {
+    const ops = N.opcoesInicio(agora());
+    return ops.some((x) => x.iso === UI.inicioPlano) ? UI.inicioPlano : ops[0].iso;
+  }
+
+  // O que dá para pedir agora: o que falta no perfil e as semanas do plano novo.
+  function estadoCriar() {
+    const p = N.perfil(D), o = N.objetivo(D);
+    const falta = N.faltaParaPlano(p, o);
+    let cal = null, erroCal = '';
+    if (N.dataIso(o.data)) { try { cal = N.calendario(inicioEscolhido(), o.data); } catch (e) { erroCal = e.message; } }
+    return { p, o, falta, cal, erroCal, pronto: !falta.length && !!cal };
+  }
+
+  function pedidoAtual(e) { return { perfil: e.p, objetivo: e.o, calendario: e.cal, idade: N.idade(D, agora()), hoje: agora() }; }
+
+  function linhaTenis(t) {
+    return `<div class="row tenis-linha" data-nome="${v(t.nome)}"><label>Nome<input data-t="nome" value="${v(t.nome)}" placeholder="ex.: Novablast 5"></label><label>Km já rodados<input data-t="km" type="number" min="0" inputmode="decimal" value="${v(t.kmInicial || '')}"></label><label>Vida útil (km)<input data-t="vida" type="number" min="0" inputmode="numeric" value="${v(t.vida || '')}" placeholder="opcional"></label></div>`;
+  }
+
+  function htmlPrevia() {
+    const r = N.resumoPlano(rascunho.semanas);
+    const ini = N.dataIso(rascunho.inicio);
+    let h = `<div class="card previa" id="previa"><h3>Plano criado: confira antes de usar</h3>
+<p class="sub">${r.n} semanas · ${r.treinos} treinos · ${km(r.total)} km no total · maior semana ${km(r.pico)} km · maior corrida ${km(r.longao)} km</p>
+<div class="g" id="g-previa"></div><div class="rolagem previa-lista">`;
+    rascunho.semanas.forEach((s, i) => {
+      const a = N.somarDias(ini, 7 * i), b = N.somarDias(a, 6);
+      h += `<div class="previa-sem"><b>S${i + 1} · ${N.fd(a)}–${N.fd(b)}${rascunho.focos[i] ? ' · ' + esc(rascunho.focos[i]) : ''}</b><span>${km(r.porSemana[i])} km</span>` +
+        s.map((x) => `<p><i class="tag tag-${x.c}">${x.c}</i>${DIA_CURTO[x.d]} · ${esc(x.t)}</p>`).join('') + '</div>';
+    });
+    h += '</div>' + (rascunho.orientacoes ? `<details class="orienta" open><summary>Orientações</summary><p>${esc(rascunho.orientacoes)}</p></details>` : '') +
+      '<div class="acoes"><button type="button" class="b" data-acao="usar-plano">Usar este plano</button><button type="button" class="b l" data-acao="descartar-plano">Descartar</button></div></div>';
+    return h;
+  }
+
+  function telaPerfil() {
+    const p = N.perfil(D), o = N.objetivo(D), P = N.plano(D), al = P.alvo;
+    const anoAtual = agora().getFullYear();
+    const ops = N.opcoesInicio(agora());
+    const tenisLista = p.tenis.length ? p.tenis : [{ nome: '', kmInicial: '', vida: '' }];
+    const emUso = `${esc(al.prova || 'Plano')} · ${P.semanas.length} semanas, de ${dataCheia(P.inicio)} a ${dataCheia(N.dataProva(D))} · ` +
+      (P.embutido ? 'plano original' : `criado pela IA${N.dataIso(P.criadoEm) ? ' em ' + dataCheia(N.dataIso(P.criadoEm)) : ''}`);
+
+    let h = `<form id="fperfil" autocomplete="off">
+<div class="card"><h3>Quem corre</h3>
+<label>Nome<input name="nome" value="${v(p.nome)}" autocomplete="name"></label>
+<div class="row"><label>Ano de nascimento<input name="nascimento" type="number" min="1920" max="${anoAtual}" inputmode="numeric" value="${v(p.nascimento)}" placeholder="ex.: 1988"></label><label>Sexo<select name="sexo">${opcoes(['', 'feminino', 'masculino', 'outro'], ['—', 'Feminino', 'Masculino', 'Outro'], p.sexo)}</select></label></div>
+<div class="row"><label>Peso (kg)<input name="peso" type="number" step="0.1" min="0" inputmode="decimal" value="${v(p.peso)}"></label><label>Altura (cm)<input name="altura" type="number" min="0" inputmode="numeric" value="${v(p.altura)}"></label></div>
+</div>
+
+<div class="card"><h3>Estado físico na corrida</h3><small>Quanto mais completo, mais o treino sai na sua medida.</small>
+<label>Há quanto tempo corre<select name="experiencia">${opcoes(['', 'iniciante', 'menos1', '1a3', 'mais3'], ['—'].concat(['iniciante', 'menos1', '1a3', 'mais3'].map((k) => ROTULO_EXPERIENCIA[k])), p.experiencia)}</select></label>
+<div class="row"><label>Km por semana hoje<input name="kmSemana" type="number" step="0.1" min="0" inputmode="decimal" value="${v(p.kmSemana)}"></label><label>Maior corrida recente (km)<input name="maiorCorrida" type="number" step="0.1" min="0" inputmode="decimal" value="${v(p.maiorCorrida)}"></label></div>
+<div class="row"><label>Ritmo confortável (min/km)<input name="ritmoLeve" value="${v(p.ritmoLeve)}" placeholder="ex.: 6:45"></label><label>Prova ou teste recente<input name="provaRecente" value="${v(p.provaRecente)}" placeholder="ex.: 5 km em 28:30"></label></div>
+<div class="row"><label>FC máxima (opcional)<input name="fcMax" type="number" min="0" inputmode="numeric" value="${v(p.fcMax)}"></label><label>FC de repouso (opcional)<input name="fcRepouso" type="number" min="0" inputmode="numeric" value="${v(p.fcRepouso)}"></label></div>
+<fieldset class="dias"><legend>Dias em que pode correr</legend>${N.DIAS.map((d) => `<label><input type="checkbox" name="dia-${d}"${p.dias.indexOf(d) >= 0 ? ' checked' : ''}><span>${DIA_CURTO[d]}</span></label>`).join('')}</fieldset>
+<label>Dia do treino longo<select name="diaLongo">${opcoes([''].concat(N.DIAS), ['Tanto faz'].concat(N.DIAS.map((d) => N.DIA[d])), p.diaLongo)}</select></label>
+<label>Lesões, dores ou limitações<input name="lesoes" value="${v(p.lesoes)}" placeholder="ex.: joelho direito sensível em descidas"></label>
+<label>Outras atividades e observações<input name="obs" value="${v(p.obs)}" placeholder="ex.: musculação 2x por semana"></label>
+</div>
+
+<div class="card"><h3>Tênis</h3><small>Aparecem no registro do treino e no painel. Para tirar um, apague o nome.</small>
+<div id="tenis-lista">${tenisLista.map(linhaTenis).join('')}</div>
+<div class="acoes"><button type="button" class="b l" data-acao="mais-tenis">Adicionar tênis</button></div>
+</div>
+
+<div class="card"><h3>Objetivo</h3>
+<label>Prova ou objetivo<input name="prova" value="${v(o.prova)}" placeholder="ex.: Meia do Rio 2027"></label>
+<div class="row"><label>Distância (km)<input name="distancia" type="number" step="0.1" min="0" inputmode="decimal" value="${v(o.distancia)}"></label><label>Data da prova<input name="data" type="date" value="${v(o.data)}"></label></div>
+<div class="chips atalhos">${[5, 10, 21.1, 42.2].map((x) => `<button type="button" data-acao="distancia" data-km="${x}">${km(x)} km</button>`).join('')}</div>
+<div class="row"><label>Meta<input name="meta" value="${v(o.meta)}" placeholder="ex.: completar bem"></label><label>Tempo-alvo (opcional)<input name="tempoAlvo" value="${v(o.tempoAlvo)}" placeholder="ex.: 1:59:00"></label></div>
+<p class="nota" id="p-nota" hidden></p>
+</div>
+
+<div class="card" id="criar"><h3>Criar treino com IA</h3>
+<p class="sub">A IA monta o plano semana a semana a partir do seu perfil e do objetivo. Você confere e decide se usa.</p>
+<label>Começar<select name="inicio">${opcoes(ops.map((x) => x.iso), ops.map((x) => x.rotulo), inicioEscolhido())}</select></label>
+<p class="nota" id="p-cal"></p>
+<p class="nota falta" id="p-falta" hidden></p>
+<div class="acoes" id="p-botoes"></div>
+<p class="nota" id="p-prog" role="status" aria-live="polite"${gerando ? '' : ' hidden'}></p>
+<p class="nota erro" id="p-erro" role="alert"${erroIa ? '' : ' hidden'}>${esc(erroIa)}</p>
+<details><summary>Sem chave de API: usar o chat do Claude</summary>
+<ol class="passos"><li>Toque em <b>Copiar pedido</b> e cole numa conversa em claude.ai.</li><li>Copie a resposta inteira e cole no campo abaixo.</li><li>Toque em <b>Ler resposta</b> para ver a prévia do plano.</li></ol>
+<div class="acoes"><button type="button" class="b l" data-acao="copiar-pedido">Copiar pedido</button></div>
+<textarea id="colado" aria-label="Resposta do chat" placeholder="Cole aqui a resposta do Claude."></textarea>
+<div class="acoes"><button type="button" class="b l" data-acao="ler-resposta">Ler resposta</button></div></details>
+<small class="rodape-card">Orientação geral de treino, não substitui avaliação médica. Ao criar o treino, o perfil (sem o nome) e o objetivo são enviados à Anthropic.</small>
+</div>
+</form>`;
+
+    if (rascunho) h += htmlPrevia();
+
+    h += `<div class="card"><h3>Plano em uso</h3><p class="sub">${emUso}</p>` +
+      (ler(CHAVE_ANTERIOR) ? '<div class="acoes"><button type="button" class="b l" data-acao="voltar-plano">Voltar ao plano anterior</button></div>' : '') + '</div>';
+
+    $('#app').innerHTML = h;
+    $('#fperfil').onchange = guardarPerfil;
+    $('#fperfil').onsubmit = (ev) => ev.preventDefault();
+    atualizarCriar();
+
+    if (rascunho) {
+      const r = N.resumoPlano(rascunho.semanas);
+      redesenhar = () => G.porSemana($('#g-previa'), {
+        rotulos: r.porSemana.map((_, i) => 'S' + (i + 1)), atual: -1, altura: 150,
+        y: Object.assign(G.escala(0, Math.max(10, r.pico), null, 4), { fmt: String }),
+        camadas: [{ tipo: 'coluna', valores: r.porSemana, classe: 'c-feito' }],
+        dica: (i) => ({ titulo: `S${i + 1}${rascunho.focos[i] ? ' · ' + rascunho.focos[i] : ''}`, linhas: [{ chave: 'caixa', classe: 'c-feito', rotulo: 'Planejado', valor: km(r.porSemana[i]) + ' km' }] }),
+        descricao: 'Km planejados em cada semana do plano criado.',
+      });
+      redesenhar();
+    }
+  }
+
+  // Lê o formulário do perfil e guarda (chamado a cada campo alterado).
+  function guardarPerfil() {
+    const f = $('#fperfil');
+    if (!f) return;
+    const g = (n) => (f.elements[n] ? String(f.elements[n].value).trim() : '');
+    const tenis = [];
+    f.querySelectorAll('.tenis-linha').forEach((linha) => {
+      const nome = $('[data-t="nome"]', linha).value.trim();
+      const antes = linha.dataset.nome || '';
+      if (!nome) return;
+      // Renomear um tênis leva junto os treinos já registrados com ele.
+      if (antes && antes !== nome) Object.values(D.logs).forEach((l) => { if (l && l.tenis === antes) l.tenis = nome; });
+      linha.dataset.nome = nome;
+      tenis.push({ nome, kmInicial: +$('[data-t="km"]', linha).value || 0, vida: +$('[data-t="vida"]', linha).value || 0 });
+    });
+    D.perfil = {
+      nome: g('nome'), nascimento: g('nascimento'), sexo: g('sexo'), peso: g('peso'), altura: g('altura'),
+      experiencia: g('experiencia'), kmSemana: g('kmSemana'), maiorCorrida: g('maiorCorrida'), ritmoLeve: g('ritmoLeve'),
+      provaRecente: g('provaRecente'), fcMax: g('fcMax'), fcRepouso: g('fcRepouso'),
+      dias: N.DIAS.filter((d) => f.elements['dia-' + d].checked), diaLongo: g('diaLongo'), lesoes: g('lesoes'), obs: g('obs'), tenis,
+    };
+    D.objetivo = { prova: g('prova'), distancia: g('distancia') === '' ? '' : +g('distancia'), data: g('data'), meta: g('meta'), tempoAlvo: g('tempoAlvo') };
+    UI.inicioPlano = g('inicio');
+    salvarUi();
+    salvar();
+    cabecalho();
+    atualizarCriar();
+  }
+
+  // Atualiza os avisos e botões da criação do treino sem redesenhar o formulário.
+  function atualizarCriar() {
+    if (!$('#criar')) return;
+    const e = estadoCriar(), al = N.alvo(D);
+    const cal = $('#p-cal'), falta = $('#p-falta'), nota = $('#p-nota');
+    if (e.cal) {
+      const encurtado = N.iso(e.cal.inicio) !== inicioEscolhido();
+      cal.textContent = `O plano terá ${e.cal.n} semanas${encurtado ? ' (o máximo)' : ''}: de ${dataCheia(e.cal.inicio)} até a prova, em ${dataCheia(e.cal.prova)}.`;
+    } else cal.textContent = e.erroCal;
+    cal.hidden = !cal.textContent;
+    falta.hidden = !e.falta.length;
+    falta.textContent = e.falta.length ? 'Falta preencher: ' + e.falta.join('; ') + '.' : '';
+    // O objetivo do formulário só passa a valer quando um plano novo é criado.
+    const mudou = String(e.o.data) !== String(al.data) || +e.o.distancia !== +al.distancia;
+    nota.hidden = !mudou;
+    nota.textContent = mudou ? `O plano em uso é para ${al.prova || 'a prova'} em ${dataCheia(N.dataProva(D))}. Crie um treino novo para valer este objetivo.` : '';
+
+    const botoes = $('#p-botoes');
+    if (gerando) botoes.innerHTML = '<button type="button" class="b l" data-acao="cancelar-ia">Cancelar</button>';
+    else if (!CFG.chave) botoes.innerHTML = '<button type="button" class="b" disabled>Criar treino com IA</button><button type="button" class="b l" data-acao="ir-ajustes">Informar chave da IA</button>';
+    else botoes.innerHTML = `<button type="button" class="b" data-acao="criar-ia"${e.pronto ? '' : ' disabled'}>${rascunho ? 'Criar outro treino' : 'Criar treino com IA'}</button>`;
+    mostrarProgresso();
+  }
+
+  function mostrarProgresso() {
+    const el = $('#p-prog');
+    if (!el) return;
+    el.hidden = !gerando;
+    if (!gerando) return;
+    const s = Math.floor((Date.now() - gerando.inicio) / 1000);
+    el.textContent = `${gerando.texto} (${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')})`;
+  }
+
+  async function criarComIa() {
+    guardarPerfil();
+    const e = estadoCriar();
+    if (gerando || !e.pronto) return;
+    if (!CFG.chave) { aviso('Informe a chave da IA em Ajustes.'); return; }
+    const controle = new AbortController();
+    gerando = { cancelar: () => controle.abort(), inicio: Date.now(), texto: 'Enviando o pedido…' };
+    erroIa = '';
+    const relogio = setInterval(mostrarProgresso, 1000);
+    if ($('#p-erro')) $('#p-erro').hidden = true;
+    atualizarCriar();
+    try {
+      const resposta = await IA.chamar({
+        chave: CFG.chave, modelo: CFG.modelo, sistema: IA.promptSistema(), usuario: IA.pedidoPlano(pedidoAtual(e)),
+        esquema: IA.ESQUEMA_PLANO, sinal: controle.signal,
+        aoProgresso: (st) => {
+          const n = IA.semanasRecebidas(st.texto);
+          gerando.texto = n ? `Escrevendo o plano: semana ${Math.min(n, e.cal.n)} de ${e.cal.n}…` : 'A IA está pensando no plano…';
+          mostrarProgresso();
+        },
+      });
+      rascunho = N.montarPlano(resposta, e.cal, e.o, agora());
+    } catch (err) {
+      erroIa = err && err.name === 'AbortError' ? '' : (err && err.message) || 'Não consegui criar o treino.';
+      if (err && err.name === 'AbortError') aviso('Criação cancelada.');
+    }
+    clearInterval(relogio);
+    gerando = null;
+    if (aba !== 'perfil') { aviso(rascunho && !erroIa ? 'Plano pronto: veja na aba Perfil.' : erroIa || 'Criação encerrada.'); return; }
+    render();
+    const alvo = $(erroIa ? '#criar' : '#previa');
+    if (alvo) alvo.scrollIntoView();
+  }
+
+  function lerRespostaColada() {
+    guardarPerfil();
+    const e = estadoCriar();
+    if (!e.pronto) { aviso('Preencha o objetivo e o perfil antes.'); return; }
+    try { rascunho = N.montarPlano(IA.lerJson($('#colado').value), e.cal, e.o, agora()); }
+    catch (err) { aviso(err.message); return; }
+    erroIa = '';
+    render();
+    $('#previa').scrollIntoView();
+  }
+
+  function usarPlano() {
+    if (!rascunho) return;
+    const temRegistros = Object.keys(D.logs).length || Object.keys(D.weeks).length;
+    if (temRegistros && !confirm('Trocar de plano tira da tela os treinos e as semanas registrados no plano atual. Dá para desfazer em Perfil → "Voltar ao plano anterior". Continuar?')) return;
+    gravar(CHAVE_ANTERIOR, JSON.stringify(D));
+    D = Object.assign({}, D, { plano: rascunho, logs: {}, weeks: {}, ov: {} });
+    rascunho = null;
+    salvar();
+    irPara('plano');
+    aviso('Plano novo em uso.');
+  }
+
+  function voltarPlano() {
+    let anterior;
+    try { anterior = N.importar(ler(CHAVE_ANTERIOR)); } catch (e) { aviso('Não consegui recuperar o plano anterior.'); return; }
+    if (!confirm('Voltar ao plano anterior? O plano atual e os treinos registrados nele serão descartados.')) return;
+    // Volta o plano e os registros; o perfil e o objetivo ficam como estão agora.
+    D = Object.assign({}, D, { logs: anterior.logs, weeks: anterior.weeks, ov: anterior.ov });
+    if (anterior.plano) D.plano = anterior.plano; else delete D.plano;
+    remover(CHAVE_ANTERIOR);
+    salvar();
+    render();
+    aviso('Plano anterior de volta.');
+  }
+
   // ---------- exportar ----------
 
   function telaExportar() {
@@ -446,13 +739,6 @@
   }
 
   function gerar() { $('#out').value = N.textoExportacao(D, agora()); }
-
-  function copiar() {
-    const t = $('#out');
-    const reserva = () => { t.select(); document.execCommand('copy'); aviso('Copiado!'); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t.value).then(() => aviso('Copiado!'), reserva);
-    else reserva();
-  }
 
   function marcarEnviadas() {
     const p = N.pendentes(D);
@@ -475,21 +761,42 @@
   }
 
   function telaAjustes() {
-    $('#app').innerHTML = cartaoInstalar() + `<div class="card"><h3>Prompt atual</h3><small>Cole aqui a versão mais recente que o Claude devolver. A exportação usa este texto.</small>
+    const fim = CFG.chave ? CFG.chave.slice(-4) : '';
+    $('#app').innerHTML = cartaoInstalar() + `<div class="card" id="cartao-ia"><h3>IA (Claude)</h3>
+<small>Serve para criar o treino dentro do app (aba Perfil). A chave é da sua conta na Anthropic (console.anthropic.com) e o uso é cobrado nela. Fica guardada só neste aparelho, fora do backup; não use em aparelho compartilhado.</small>
+<label>Chave de API<input id="ia-chave" type="password" autocomplete="off" spellcheck="false" placeholder="${fim ? 'chave guardada (termina em ' + esc(fim) + ')' : 'sk-ant-...'}"></label>
+<label>Modelo<select id="ia-modelo">${opcoes(IA.MODELOS.map((m) => m.id), IA.MODELOS.map((m) => m.nome + ' — ' + m.nota), IA.modeloPorId(CFG.modelo).id)}</select></label>
+<div class="acoes"><button type="button" class="b" data-acao="salvar-ia">Salvar</button>${fim ? '<button type="button" class="b l" data-acao="remover-ia">Remover chave</button>' : ''}</div></div>
+<div class="card"><h3>Prompt atual</h3><small>Cole aqui a versão mais recente que o Claude devolver. A exportação usa este texto.</small>
 <textarea id="pr" aria-label="Prompt atual" style="min-height:220px;margin-top:8px">${esc(D.prompt)}</textarea><div class="acoes"><button type="button" class="b" data-acao="salvar-prompt">Salvar prompt</button></div></div>
-<div class="card"><h3>Evo SL</h3><label>Km que o Evo SL já tinha antes do app<input id="evo" type="number" min="0" inputmode="decimal" value="${v(D.evoBase)}"></label><div class="acoes"><button type="button" class="b" data-acao="salvar-evo">Salvar</button></div></div>
-<div class="card"><h3>Backup</h3><small>Os dados ficam só neste aparelho. Faça backup de vez em quando e guarde o arquivo ou o texto. O backup da página antiga também pode ser restaurado aqui.</small>
+<div class="card"><h3>Backup</h3><small>Os dados ficam só neste aparelho. Faça backup de vez em quando e guarde o arquivo ou o texto. O backup inclui o perfil e o plano criado, mas não a chave da IA. O backup da página antiga também pode ser restaurado aqui.</small>
 <div class="acoes"><button type="button" class="b l" data-acao="backup-baixar">Baixar arquivo</button><button type="button" class="b l" data-acao="backup-abrir">Restaurar de arquivo</button></div>
 <input id="arq" type="file" accept="application/json,.json,.txt" hidden>
 <div class="acoes"><button type="button" class="b l" data-acao="backup-gerar">Gerar texto</button><button type="button" class="b l" data-acao="backup-restaurar">Restaurar do texto</button></div>
 <textarea id="bk" aria-label="Texto do backup" style="margin-top:8px" placeholder="O backup aparece aqui. Para restaurar, cole o texto e toque em Restaurar do texto."></textarea></div>
-<div class="card"><h3>Apagar dados</h3><small>Remove todos os registros, semanas e o prompt deste aparelho.</small><div class="acoes"><button type="button" class="b perigo" data-acao="apagar-tudo">Apagar tudo</button></div></div>
-<p class="rodape">21K Rio 2027 · versão ${VERSAO}</p>`;
+<div class="card"><h3>Apagar dados</h3><small>Remove deste aparelho os registros, as semanas, o prompt, o perfil, o plano criado e a chave da IA. O app volta ao plano original.</small><div class="acoes"><button type="button" class="b perigo" data-acao="apagar-tudo">Apagar tudo</button></div></div>
+<p class="rodape">Versão ${VERSAO}</p>`;
     $('#arq').onchange = (e) => {
       const arq = e.target.files[0];
       if (!arq) return;
       arq.text().then(restaurar, () => aviso('Não consegui ler o arquivo.'));
     };
+  }
+
+  function salvarIa() {
+    const nova = $('#ia-chave').value.trim();
+    if (nova) CFG.chave = nova;
+    CFG.modelo = $('#ia-modelo').value;
+    if (!gravar(CHAVE_IA, JSON.stringify(CFG))) { aviso('Não consegui guardar a chave neste navegador.'); return; }
+    renderNoLugar();
+    aviso(CFG.chave ? 'Chave guardada neste aparelho.' : 'Modelo salvo. Falta informar a chave.');
+  }
+
+  function removerIa() {
+    CFG.chave = '';
+    gravar(CHAVE_IA, JSON.stringify({ modelo: CFG.modelo }));
+    renderNoLugar();
+    aviso('Chave removida deste aparelho.');
   }
 
   function restaurar(texto) {
@@ -498,22 +805,35 @@
     const temDados = Object.keys(D.logs).length || Object.keys(D.weeks).length;
     if (temDados && !confirm('Restaurar substitui os dados atuais deste aparelho. Continuar?')) return;
     D = novo;
+    rascunho = null;
     salvar();
     render();
     aviso('Backup restaurado!');
   }
 
   function baixarBackup() {
-    const a = agora();
-    const nome = `backup-21k-${a.getFullYear()}-${String(a.getMonth() + 1).padStart(2, '0')}-${String(a.getDate()).padStart(2, '0')}.json`;
     const url = URL.createObjectURL(new Blob([JSON.stringify(D)], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = nome;
+    link.download = `backup-21k-${N.iso(agora())}.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function apagarTudo() {
+    if (!confirm('Apagar TODOS os dados?')) return;
+    if (gerando) gerando.cancelar();
+    D = N.vazio();
+    rascunho = null;
+    erroIa = '';
+    CFG.chave = '';
+    remover(CHAVE_IA);
+    remover(CHAVE_ANTERIOR);
+    salvar();
+    render();
+    aviso('Dados apagados.');
   }
 
   // ---------- ações ----------
@@ -521,18 +841,34 @@
   const ACOES = {
     treino: (el) => abrirTreino(el.dataset.k),
     semana: (el) => abrirSemana(+el.dataset.w),
-    periodo: (el) => { UI.periodo = el.dataset.p; salvarUi(); const y = window.scrollY; render(); window.scrollTo(0, y); },
+    periodo: (el) => { UI.periodo = el.dataset.p; salvarUi(); renderNoLugar(); },
     gerar,
-    copiar,
+    copiar: () => copiarTexto($('#out').value, $('#out')),
     compartilhar: () => navigator.share({ text: $('#out').value }).catch(() => {}),
     enviadas: marcarEnviadas,
+    'mais-tenis': () => $('#tenis-lista').insertAdjacentHTML('beforeend', linhaTenis({ nome: '', kmInicial: '', vida: '' })),
+    distancia: (el) => { $('#fperfil').elements.distancia.value = el.dataset.km; guardarPerfil(); },
+    'criar-ia': criarComIa,
+    'cancelar-ia': () => { if (gerando) gerando.cancelar(); },
+    'ir-ajustes': () => irPara('ajustes'),
+    'copiar-pedido': () => {
+      guardarPerfil();
+      const e = estadoCriar();
+      if (!e.pronto) { aviso('Preencha o objetivo e o perfil antes.'); return; }
+      copiarTexto(IA.textoParaChat(pedidoAtual(e)));
+    },
+    'ler-resposta': lerRespostaColada,
+    'usar-plano': usarPlano,
+    'descartar-plano': () => { rascunho = null; renderNoLugar(); },
+    'voltar-plano': voltarPlano,
+    'salvar-ia': salvarIa,
+    'remover-ia': removerIa,
     'salvar-prompt': () => { D.prompt = $('#pr').value; salvar(); aviso('Prompt salvo!'); },
-    'salvar-evo': () => { D.evoBase = +$('#evo').value || 0; salvar(); aviso('Salvo!'); },
     'backup-gerar': () => { $('#bk').value = JSON.stringify(D); },
     'backup-restaurar': () => restaurar($('#bk').value),
     'backup-baixar': baixarBackup,
     'backup-abrir': () => $('#arq').click(),
-    'apagar-tudo': () => { if (confirm('Apagar TODOS os dados?')) { D = N.vazio(); salvar(); render(); aviso('Dados apagados.'); } },
+    'apagar-tudo': apagarTudo,
     instalar: () => {
       if (!pedidoInstalar) return;
       const p = pedidoInstalar;
@@ -576,9 +912,9 @@
   window.addEventListener('beforeinstallprompt', (ev) => {
     ev.preventDefault();
     pedidoInstalar = ev;
-    if (aba === 'plano' || aba === 'ajustes') { const y = window.scrollY; render(); window.scrollTo(0, y); }
+    if (aba === 'plano' || aba === 'ajustes') renderNoLugar();
   });
-  window.addEventListener('appinstalled', () => { pedidoInstalar = null; render(); aviso('App instalado!'); });
+  window.addEventListener('appinstalled', () => { pedidoInstalar = null; if (aba !== 'perfil') render(); aviso('App instalado!'); });
 
   const local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || local)) {
@@ -590,7 +926,10 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || $('#dlg').open) return;
     const hoje = agora().toDateString();
-    if (hoje !== diaMostrado) { diaMostrado = hoje; render(); }
+    if (hoje === diaMostrado) return;
+    diaMostrado = hoje;
+    // No Perfil só o cabeçalho muda: redesenhar apagaria o que a pessoa está digitando.
+    if (aba === 'perfil') cabecalho(); else render();
   });
 
   render();

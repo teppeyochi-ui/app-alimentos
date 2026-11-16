@@ -161,6 +161,7 @@ main { max-width: 720px; margin: auto; padding: 12px 12px calc(86px + env(safe-a
 .b.l { background: transparent; color: var(--prim); }
 .b.perigo { background: var(--critico); border-color: var(--critico); color: #fff; }
 .b:active { transform: translateY(1px); }
+.b:disabled { opacity: .45; cursor: default; }
 .acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 
 label { display: block; margin-top: 10px; font-size: 13px; color: var(--texto-2); }
@@ -235,6 +236,8 @@ textarea { min-height: 120px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menl
 .wk-topo .km { font-size: 14px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .wk.atual { border-color: var(--prim); }
 .selo { padding: 1px 8px; border-radius: 999px; background: var(--prim-suave); color: var(--prim); font-size: 12px; font-weight: 600; }
+.foco { color: var(--texto-2); font-size: 13px; font-weight: 500; }
+.foco::before { content: "· "; }
 
 .ses {
   display: flex;
@@ -424,6 +427,50 @@ tr.atual td { font-weight: 700; }
 @media (prefers-reduced-motion: no-preference) {
   .medidor i { transition: width .3s ease; }
 }
+
+/* ---------- perfil, objetivo e criação do treino ---------- */
+
+.orienta { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--grade); }
+.orienta summary { color: var(--prim); font-size: 13px; font-weight: 600; cursor: pointer; }
+.orienta p { margin-top: 6px; font-size: 14px; white-space: pre-line; }
+
+.card .sub { margin-top: 4px; color: var(--texto-2); font-size: 14px; }
+.nota { margin-top: 10px; font-size: 13.5px; color: var(--texto-2); }
+.nota.falta { color: var(--texto); font-weight: 600; }
+.nota.erro { padding: 8px 10px; border-radius: 10px; background: var(--critico-fundo); color: var(--texto); }
+.rodape-card { display: block; margin-top: 12px; }
+
+fieldset.dias { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; padding: 0; border: 0; min-width: 0; }
+fieldset.dias legend { padding: 0; margin-bottom: 4px; font-size: 13px; color: var(--texto-2); }
+fieldset.dias label { position: relative; margin: 0; }
+fieldset.dias input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+fieldset.dias span {
+  display: inline-block;
+  min-width: 44px;
+  padding: 9px 6px;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--texto);
+}
+fieldset.dias input:checked + span { background: var(--prim); border-color: var(--prim); color: var(--prim-texto); font-weight: 600; }
+fieldset.dias input:focus-visible + span { outline: 2px solid var(--prim); outline-offset: 2px; }
+
+.atalhos { margin-top: 8px; }
+.atalhos button { border: 1px solid var(--borda); border-radius: 999px; background: var(--sup); padding: 5px 12px; font-size: 13px; color: var(--texto); }
+.tenis-linha + .tenis-linha { margin-top: 2px; padding-top: 2px; }
+#criar details { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--grade); }
+#criar summary { color: var(--texto-2); font-size: 14px; cursor: pointer; }
+#colado { margin-top: 10px; min-height: 90px; }
+
+.previa { border-color: var(--prim); }
+.previa-lista { max-height: 340px; margin-top: 10px; }
+.previa-sem { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 9px 10px; border-bottom: 1px solid var(--grade); font-size: 13.5px; }
+.previa-sem:last-child { border-bottom: 0; }
+.previa-sem span { color: var(--texto-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.previa-sem p { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 6px; color: var(--texto-2); }
+.previa-sem .tag { font-style: normal; font-size: 11px; min-width: 20px; }
 
 /* Tela larga: as abas ficam no alto, então o aviso desce e a semana atual para abaixo delas. */
 @media (min-width: 760px) {

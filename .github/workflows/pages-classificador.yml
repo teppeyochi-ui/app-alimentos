@@ -2,6 +2,7 @@
 #   https://teppeyochi-ui.github.io/app-alimentos/              → Classificador de Camarão
 #   https://teppeyochi-ui.github.io/app-alimentos/diario-skin/  → Diário da Linha Skin
 #   https://teppeyochi-ui.github.io/app-alimentos/ditado-voz/   → Dita (ditado por voz)
+#   https://teppeyochi-ui.github.io/app-alimentos/treino-21k/   → 21K Rio 2027 (plano de treino)
 # Configuração única: Settings → Pages → Build and deployment → Source: "GitHub Actions".
 #
 # Diário da Linha Skin: ligado ao projeto Supabase indicado no passo "Diário — build".
@@ -21,6 +22,7 @@ on:
       - 'classificador-camarao/**'
       - 'diario-skin/**'
       - 'ditado-voz/**'
+      - 'treino-21k/**'
       - '.github/workflows/pages-classificador.yml'
   workflow_dispatch:
 
@@ -57,6 +59,10 @@ jobs:
         working-directory: ditado-voz
         run: node teste-nucleo.js
 
+      - name: 21K Rio — testes do núcleo
+        working-directory: treino-21k
+        run: node teste-nucleo.js
+
       - name: Diário — dependências
         working-directory: diario-skin
         run: npm ci
@@ -86,6 +92,11 @@ jobs:
           cd ditado-voz
           cp index.html styles.css app.js core.js sw.js manifest.webmanifest ../_site/ditado-voz/
           cp -r icones ../_site/ditado-voz/
+          cd ..
+          mkdir -p _site/treino-21k
+          cd treino-21k
+          cp index.html styles.css app.js core.js graficos.js sw.js manifest.webmanifest ../_site/treino-21k/
+          cp -r icones ../_site/treino-21k/
           cd ..
           touch _site/.nojekyll
 

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>21K Rio 2027</title>
+  <meta name="description" content="Plano de 28 semanas para a meia maratona do Rio 2027: registro dos treinos, painel de evolução e relatório semanal.">
+  <meta name="theme-color" content="#0f6e56" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b4a3a" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="21K Rio">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icones/icone-192.png">
+  <link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="topo-dentro">
+      <h1>Rafael Braga · 21K Rio 2027</h1>
+      <p id="hdr"></p>
+    </div>
+  </header>
+
+  <nav class="abas" aria-label="Seções do app">
+    <button type="button" data-aba="plano" class="on" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M8.5 3v4M15.5 3v4"/></svg>
+      <span>Plano</span>
+    </button>
+    <button type="button" data-aba="evolucao">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M4 15l5-5 4 3 7-8"/></svg>
+      <span>Evolução</span>
+    </button>
+    <button type="button" data-aba="exportar">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>
+      <span>Exportar</span>
+    </button>
+    <button type="button" data-aba="ajustes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+      <span>Ajustes</span>
+    </button>
+  </nav>
+
+  <main id="app"></main>
+
+  <dialog id="dlg"><form id="frm" method="dialog"></form></dialog>
+  <div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
+
+  <noscript><p style="padding:16px">Este aplicativo precisa de JavaScript ativado.</p></noscript>
+  <script src="core.js"></script>
+  <script src="graficos.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

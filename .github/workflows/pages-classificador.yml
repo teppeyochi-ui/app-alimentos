@@ -3,6 +3,7 @@
 #   https://teppeyochi-ui.github.io/app-alimentos/diario-skin/  → Diário da Linha Skin
 #   https://teppeyochi-ui.github.io/app-alimentos/ditado-voz/   → Dita (ditado por voz)
 #   https://teppeyochi-ui.github.io/app-alimentos/treino-21k/   → 21K Rio 2027 (plano de treino)
+#   https://teppeyochi-ui.github.io/app-alimentos/controle-validade/ → Validade em Dia (controle de validade)
 # Configuração única: Settings → Pages → Build and deployment → Source: "GitHub Actions".
 #
 # Diário da Linha Skin: ligado ao projeto Supabase indicado no passo "Diário — build".
@@ -23,6 +24,7 @@ on:
       - 'diario-skin/**'
       - 'ditado-voz/**'
       - 'treino-21k/**'
+      - 'controle-validade/**'
       - '.github/workflows/pages-classificador.yml'
   workflow_dispatch:
 
@@ -63,6 +65,10 @@ jobs:
         working-directory: treino-21k
         run: node teste-nucleo.js
 
+      - name: Validade em Dia — testes do núcleo
+        working-directory: controle-validade
+        run: node teste-nucleo.js
+
       - name: Diário — dependências
         working-directory: diario-skin
         run: npm ci
@@ -97,6 +103,11 @@ jobs:
           cd treino-21k
           cp index.html styles.css app.js core.js graficos.js ia.js sw.js manifest.webmanifest ../_site/treino-21k/
           cp -r icones ../_site/treino-21k/
+          cd ..
+          mkdir -p _site/controle-validade
+          cd controle-validade
+          cp index.html styles.css app.js core.js sw.js manifest.webmanifest ../_site/controle-validade/
+          cp -r icones ../_site/controle-validade/
           cd ..
           touch _site/.nojekyll
 

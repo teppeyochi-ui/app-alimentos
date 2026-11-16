@@ -7,7 +7,7 @@
 (function () {
   'use strict';
   const N = window.Nucleo, G = window.Graficos, IA = window.IA;
-  const VERSAO = '1.1.0';
+  const VERSAO = '1.1.1';
   const CHAVE_UI = 'r21k_ui'; // preferências de tela (ficam fora do backup)
   const CHAVE_IA = 'r21k_ia'; // chave da API e modelo (ficam fora do backup)
   const CHAVE_ANTERIOR = 'r21k_anterior'; // dados de antes da última troca de plano
@@ -763,7 +763,7 @@
   function telaAjustes() {
     const fim = CFG.chave ? CFG.chave.slice(-4) : '';
     $('#app').innerHTML = cartaoInstalar() + `<div class="card" id="cartao-ia"><h3>IA (Claude)</h3>
-<small>Serve para criar o treino dentro do app (aba Perfil). A chave é da sua conta na Anthropic (console.anthropic.com) e o uso é cobrado nela. Fica guardada só neste aparelho, fora do backup; não use em aparelho compartilhado.</small>
+<small>Serve para criar o treino dentro do app (aba Perfil). A chave é criada no console da Anthropic, em <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">platform.claude.com/settings/keys</a>, e o uso é cobrado nessa conta (separada da assinatura do claude.ai). Fica guardada só neste aparelho, fora do backup; não use em aparelho compartilhado.</small>
 <label>Chave de API<input id="ia-chave" type="password" autocomplete="off" spellcheck="false" placeholder="${fim ? 'chave guardada (termina em ' + esc(fim) + ')' : 'sk-ant-...'}"></label>
 <label>Modelo<select id="ia-modelo">${opcoes(IA.MODELOS.map((m) => m.id), IA.MODELOS.map((m) => m.nome + ' — ' + m.nota), IA.modeloPorId(CFG.modelo).id)}</select></label>
 <div class="acoes"><button type="button" class="b" data-acao="salvar-ia">Salvar</button>${fim ? '<button type="button" class="b l" data-acao="remover-ia">Remover chave</button>' : ''}</div></div>

@@ -57,9 +57,18 @@ ele só passa a valer num treino novo.
 
 ### Chave de API
 
-A IA usa a API do Claude e precisa de uma chave da Anthropic
-(console.anthropic.com), informada em **Ajustes → IA (Claude)**. O uso é
-cobrado na conta da Anthropic de quem informou a chave.
+A IA usa a API do Claude e precisa de uma chave da Anthropic, informada em
+**Ajustes → IA (Claude)**. O uso é cobrado na conta do console da Anthropic de
+quem informou a chave, que é separada da assinatura do claude.ai.
+
+Para criar a chave:
+
+1. Entre em https://platform.claude.com (crie a conta se ainda não tiver).
+2. Em **Billing**, coloque créditos. Sem crédito, a IA responde que o saldo é
+   insuficiente.
+3. Em https://platform.claude.com/settings/keys, crie uma chave e copie (ela
+   começa com `sk-ant-` e só aparece uma vez).
+4. No app, cole em **Ajustes → IA (Claude) → Chave de API** e salve.
 
 - A chave fica guardada só no navegador do aparelho, fora do backup, e é
   enviada apenas à Anthropic. Não use em aparelho compartilhado.

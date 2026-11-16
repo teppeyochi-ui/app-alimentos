@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0f6e56"/>
+  <g transform="translate(256 256)">
+    <text x="0" y="28" text-anchor="middle" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-weight="800" font-size="196" letter-spacing="-6" fill="#ffffff">21K</text>
+    <path d="M-176 104h352" fill="none" stroke="#9fe1cb" stroke-width="26" stroke-linecap="round"/>
+    <path d="M-176 104h150" fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round"/>
+  </g>
+</svg>

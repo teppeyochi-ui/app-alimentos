@@ -85,7 +85,7 @@ teste('catálogo: cria, valida, altera e exclui produto', () => {
   assert.ok(N.salvarProduto(D, { nome: 'Molho', validades: {} }).erro);
   assert.ok(N.salvarProduto(D, { nome: 'Molho', validades: { resfriado: { n: 0, un: 'd' } } }).erro);
   const r = N.salvarProduto(D, { nome: ' Molho  pesto ', grupo: '', validades: { resfriado: { n: '3', un: 'd' }, congelado: { n: 30, un: 'x' }, ambiente: { n: '', un: 'd' } } });
-  assert.deepStrictEqual(r.produto, { id: 'p1', nome: 'Molho pesto', grupo: 'Outros', validades: { resfriado: { n: 3, un: 'd' }, congelado: { n: 30, un: 'd' } } });
+  assert.deepStrictEqual(r.produto, { id: 'p1', codigo: '', tipo: 'pp', nome: 'Molho pesto', grupo: 'Outros', validades: { resfriado: { n: 3, un: 'd' }, congelado: { n: 30, un: 'd' } } });
   assert.ok(N.salvarProduto(D, { nome: 'molho PESTO', validades: { resfriado: { n: 1, un: 'd' } } }).erro, 'nome repetido');
   const alt = N.salvarProduto(D, { id: 'p1', nome: 'Molho pesto', grupo: 'Molhos', validades: { resfriado: { n: 12, un: 'h' } } });
   assert.strictEqual(alt.produto.id, 'p1');
@@ -199,9 +199,9 @@ teste('planilha: uma linha por etiqueta, com campos protegidos', () => {
   N.darBaixa(D, 'e2', { tipo: 'descartada', motivo: 'Sobra de produção', por: 'Bruno' }, em(2026, 11, 15, 10));
   const l = N.csv(D, AGORA).split('\r\n');
   assert.strictEqual(l.length, 4);
-  assert.ok(l[0].startsWith('Número;Produto;Grupo;Conservação'));
-  assert.strictEqual(l[1], '000001;Molho de tomate;Molhos;Resfriado;"Geladeira; porta ""A""";2 kg;Ana;16/11/26 12:00;19/11/26 23:59;;;Ativa, no prazo;;;');
-  assert.strictEqual(l[2], '000002;Molho de tomate;Molhos;Resfriado;;;;14/11/26 09:00;17/11/26 23:59;;;Descartada;15/11/26 10:00;Sobra de produção;Bruno');
+  assert.ok(l[0].startsWith('Número;Código;Produto;Tipo;Grupo;Conservação'));
+  assert.strictEqual(l[1], '000001;;Molho de tomate;Em processo;Molhos;Resfriado;"Geladeira; porta ""A""";2 kg;Ana;16/11/26 12:00;19/11/26 23:59;;;;Ativa, no prazo;;;');
+  assert.strictEqual(l[2], '000002;;Molho de tomate;Em processo;Molhos;Resfriado;;;;14/11/26 09:00;17/11/26 23:59;;;;Descartada;15/11/26 10:00;Sobra de produção;Bruno');
 });
 
 teste('guardar e reabrir devolve os mesmos dados', () => {
@@ -241,12 +241,20 @@ teste('reabrir descarta o que veio quebrado e acerta a numeração', () => {
 teste('dados de exemplo: catálogo, painel nas quatro situações e um mês de histórico', () => {
   const D = N.exemplo(AGORA);
   assert.strictEqual(D.exemplo, true);
-  assert.strictEqual(D.produtos.length, 24);
+  assert.strictEqual(D.produtos.length, 27);
+  // Os três tipos, cada produto com o seu código (sem repetir).
+  assert.deepStrictEqual(N.TIPOS.map((t) => D.produtos.filter((p) => p.tipo === t.id).length), [7, 17, 3]);
+  assert.strictEqual(new Set(D.produtos.map((p) => p.codigo)).size, 27);
+  assert.strictEqual(D.produtos.find((p) => p.nome === 'Camarão limpo').codigo, 'MP001');
   assert.ok(D.produtos.every((p) => N.modosDoProduto(p).length >= 1));
-  assert.strictEqual(N.grupos(D).length, 8);
+  assert.strictEqual(N.grupos(D).length, 9);
   const P = N.painel(D, AGORA);
-  assert.strictEqual(P.itens.length, 15);
-  assert.deepStrictEqual(P.contagem, { vencido: 2, hoje: 3, breve: 3, ok: 7 });
+  assert.strictEqual(P.itens.length, 17);
+  assert.deepStrictEqual(P.contagem, { vencido: 2, hoje: 3, breve: 3, ok: 9 });
+  // Os acabados apontam para a etiqueta de que foram feitos.
+  const potes = D.etiquetas.find((e) => e.nome === 'Molho de tomate pote 300 g');
+  assert.strictEqual(potes.tipo, 'pa');
+  assert.deepStrictEqual(potes.origens.map((c) => D.etiquetas.find((e) => e.cod === c).nome), ['Molho de tomate']);
   // O queijo aberto fica preso à validade do fabricante (3 dias), e não aos 5 dias do catálogo.
   const queijo = P.itens.find((x) => x.e.nome === 'Queijo muçarela fatiado');
   assert.strictEqual(queijo.e.limitada, true);
@@ -271,10 +279,235 @@ teste('dados de exemplo abrem em qualquer hora do dia', () => {
   [em(2026, 11, 16, 0, 10), em(2026, 11, 16, 6), em(2026, 11, 16, 23, 50), em(2027, 1, 1, 3)].forEach((agora) => {
     const D = N.exemplo(agora);
     const P = N.painel(D, agora);
-    assert.strictEqual(P.itens.length, 15);
+    assert.strictEqual(P.itens.length, 17);
     assert.ok(P.contagem.vencido >= 1 && P.contagem.ok >= 5);
     assert.ok(D.etiquetas.every((e) => e.feitoEm <= agora && e.venceEm > e.feitoEm));
   });
+});
+
+// ---------- código próprio, tipos e leitor ----------
+
+teste('tamanho da etiqueta: os comuns e o informado à mão', () => {
+  assert.strictEqual(N.limparTamanho('60x40'), '60x40');
+  assert.strictEqual(N.limparTamanho(' 104 X 150 '), '104x150');
+  assert.strictEqual(N.limparTamanho('20x40'), null, 'estreita demais');
+  assert.strictEqual(N.limparTamanho('120x40'), null, 'mais larga do que a impressora');
+  assert.strictEqual(N.limparTamanho('60x10'), null);
+  assert.strictEqual(N.limparTamanho('grande'), null);
+  assert.deepStrictEqual(N.medidas('80x60'), { l: 80, a: 60 });
+  assert.deepStrictEqual(N.medidas('qualquer'), { l: 60, a: 40 });
+  assert.strictEqual(N.limparConfig({ tamanho: '75x25' }).tamanho, '75x25');
+  assert.strictEqual(N.limparConfig({ tamanho: '1x1' }).tamanho, '60x40');
+});
+
+teste('código de barras: Code 128 igual ao de uma biblioteca de referência', () => {
+  // Sequências geradas pelo JsBarcode (CODE128B) para os mesmos textos.
+  assert.strictEqual(N.code128('ZZ000112'), '110100100001110110001011101100010100111011001001110110010011101100100111001101001110011011001110010110001001001100011101011');
+  assert.strictEqual(N.code128('MP001'), '110100100001011101100011101110110100111011001001110110010011100110110110110001100011101011');
+  assert.strictEqual(N.code128('ZZOK'), '1101001000011101100010111011000101000111011010110001110110010100001100011101011');
+  assert.strictEqual(N.code128('Ab-12/x'), '1101001000010100011000100100001101001101110010011100110110011100101011100110011110010010110100010001100011101011');
+  assert.strictEqual(N.verificador128('PJJ123C'), 55);
+  // Início B, fim, e 11 módulos por símbolo (o fim tem 13).
+  const b = N.code128('PA-0042/X');
+  assert.ok(b.startsWith('11010010000') && b.endsWith('1100011101011'));
+  assert.strictEqual(b.length, 11 * (9 + 2) + 13);
+  assert.strictEqual(N.code128('AÇAÍ'), null, 'acento não entra em código de barras');
+  assert.strictEqual(N.code128(''), null);
+});
+
+teste('produto: código da casa e tipo', () => {
+  const D = N.vazio();
+  const r = N.salvarProduto(D, { codigo: ' mp-0042/a ', tipo: 'mp', nome: 'Camarão cru', validades: { resfriado: { n: 2, un: 'd' } } });
+  assert.strictEqual(r.produto.codigo, 'MP-0042/A');
+  assert.strictEqual(r.produto.tipo, 'mp');
+  assert.ok(/já é de Camarão cru/.test(N.salvarProduto(D, { codigo: 'MP-0042/A', nome: 'Outro', validades: { resfriado: { n: 2, un: 'd' } } }).erro));
+  assert.ok(/começam com ZZ/.test(N.salvarProduto(D, { codigo: 'zz10', nome: 'Outro', validades: { resfriado: { n: 2, un: 'd' } } }).erro));
+  assert.ok(/letras sem acento/.test(N.salvarProduto(D, { codigo: 'AÇÚCAR', nome: 'Outro', validades: { resfriado: { n: 2, un: 'd' } } }).erro));
+  assert.ok(/letras sem acento/.test(N.salvarProduto(D, { codigo: 'A'.repeat(21), nome: 'Outro', validades: { resfriado: { n: 2, un: 'd' } } }).erro));
+  const sem = N.salvarProduto(D, { nome: 'Sem código', tipo: 'xx', validades: { resfriado: { n: 2, un: 'd' } } });
+  assert.strictEqual(sem.produto.codigo, '');
+  assert.strictEqual(sem.produto.tipo, 'pp', 'tipo desconhecido vira "em processo"');
+  // Alterar o próprio produto mantendo o código não é repetição.
+  assert.ok(N.salvarProduto(D, { id: 'p1', codigo: 'MP-0042/A', tipo: 'mp', nome: 'Camarão cru limpo', validades: { resfriado: { n: 2, un: 'd' } } }).produto);
+  const e = N.emitir(D, { produtoId: 'p1', modo: 'resfriado' }, AGORA).etiquetas[0];
+  assert.strictEqual(e.codigo, 'MP-0042/A');
+  assert.strictEqual(e.tipo, 'mp');
+  assert.deepStrictEqual(e.origens, []);
+});
+
+function fabrica() {
+  const D = N.vazio();
+  D.config.equipe = ['José', 'Ana Lúcia'];
+  D.config.locais = ['Câmara fria', 'Freezer'];
+  const v = { resfriado: { n: 2, un: 'd' }, congelado: { n: 90, un: 'd' } };
+  N.salvarProduto(D, { codigo: 'MP001', tipo: 'mp', nome: 'Camarão cru', validades: v });
+  N.salvarProduto(D, { codigo: 'PP001', tipo: 'pp', nome: 'Recheio de camarão', validades: { resfriado: { n: 3, un: 'd' } } });
+  N.salvarProduto(D, { codigo: '7891000', tipo: 'pa', nome: 'Empada de camarão', validades: { congelado: { n: 60, un: 'd' } } });
+  return D;
+}
+
+teste('leitor: reconhece produto, etiqueta, comando e código desconhecido', () => {
+  const D = fabrica();
+  N.emitir(D, { produtoId: 'p1', modo: 'resfriado', copias: 2 }, AGORA);
+  assert.strictEqual(N.interpretar(D, 'MP001').produto.nome, 'Camarão cru');
+  assert.strictEqual(N.interpretar(D, ' mp001\r').produto.nome, 'Camarão cru', 'minúsculas e o Enter do leitor não atrapalham');
+  assert.strictEqual(N.interpretar(D, '7891000').produto.nome, 'Empada de camarão');
+  assert.strictEqual(N.interpretar(D, 'ZZ000002').etiqueta.id, 'e2');
+  assert.strictEqual(N.interpretar(D, 'zz000002').etiqueta.id, 'e2');
+  assert.ok(/não está neste aparelho/.test(N.interpretar(D, 'ZZ000099').msg));
+  assert.deepStrictEqual(N.interpretar(D, 'ZZOK'), { tipo: 'comando', comando: 'ok' });
+  assert.deepStrictEqual(N.interpretar(D, 'ZZNAO'), { tipo: 'comando', comando: 'cancelar' });
+  assert.deepStrictEqual(N.interpretar(D, 'ZZQ12'), { tipo: 'comando', comando: 'qtd', valor: 12 });
+  assert.deepStrictEqual(N.interpretar(D, 'ZZC3'), { tipo: 'comando', comando: 'modo', valor: 'descongelado' });
+  assert.deepStrictEqual(N.interpretar(D, 'ZZM1'), { tipo: 'comando', comando: 'motivo', valor: 'Vencido' });
+  assert.strictEqual(N.CODIGO.pessoa('José'), 'ZZPJOSE');
+  assert.strictEqual(N.CODIGO.local('Câmara fria'), 'ZZLCAMARAFRIA');
+  assert.deepStrictEqual(N.interpretar(D, 'ZZPANALUCIA'), { tipo: 'comando', comando: 'pessoa', valor: 'Ana Lúcia' });
+  assert.deepStrictEqual(N.interpretar(D, 'ZZLFREEZER'), { tipo: 'comando', comando: 'local', valor: 'Freezer' });
+  assert.ok(/não está mais na equipe/.test(N.interpretar(D, 'ZZPMARIA').msg));
+  assert.strictEqual(N.interpretar(D, 'ZZC9').tipo, 'erro');
+  assert.deepStrictEqual(N.interpretar(D, 'abc123'), { tipo: 'desconhecido', codigo: 'ABC123' });
+  assert.deepStrictEqual(N.interpretar(D, '   '), { tipo: 'vazio' });
+  assert.strictEqual(N.interpretar(D, 'ZZ000000').tipo, 'teste');
+});
+
+// Passa uma sequência de leituras e devolve o último resultado.
+function ler(D, S, codigos, agora) {
+  let r = { S };
+  codigos.forEach((c) => { r = N.bipar(D, r.S, c, agora || AGORA); });
+  return r;
+}
+
+teste('leitor: entrada de matéria-prima só bipando', () => {
+  const D = fabrica();
+  let r = ler(D, N.sessao(), ['ZZPJOSE', 'MP001']);
+  assert.strictEqual(r.S.modo, 'nova');
+  assert.strictEqual(r.S.copias, 1);
+  assert.strictEqual(r.S.conserv, 'resfriado');
+  r = ler(D, r.S, ['MP001', 'MP001']);
+  assert.strictEqual(r.msg, '3 etiquetas de Camarão cru', 'cada leitura do mesmo código soma uma');
+  r = ler(D, r.S, ['ZZQ5', 'ZZC2', 'ZZLFREEZER']);
+  assert.deepStrictEqual([r.S.copias, r.S.conserv, r.S.local], [5, 'congelado', 'Freezer']);
+  assert.strictEqual(D.etiquetas.length, 0, 'nada é registrado antes de confirmar');
+  r = ler(D, r.S, ['ZZOK']);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.msg, '5 etiquetas de Camarão cru: registradas.');
+  assert.strictEqual(r.imprimir.length, 5);
+  assert.deepStrictEqual([r.S.modo, r.S.operador], ['livre', 'José'], 'volta a esperar, com a mesma pessoa');
+  const e = D.etiquetas[0];
+  assert.deepStrictEqual([e.tipo, e.codigo, e.modo, e.local, e.responsavel], ['mp', 'MP001', 'congelado', 'Freezer', 'José']);
+  assert.strictEqual(quando(e.venceEm), '14/02/27 23:59');
+});
+
+teste('leitor: recusa o que não faz sentido, sem perder o que estava em andamento', () => {
+  const D = fabrica();
+  assert.ok(/Leia primeiro/.test(ler(D, N.sessao(), ['ZZOK']).msg));
+  assert.ok(/Leia primeiro/.test(ler(D, N.sessao(), ['ZZQ3']).msg));
+  let r = ler(D, N.sessao(), ['MP001', 'MP001']);
+  const antes = r.S;
+  r = ler(D, antes, ['PP001']);
+  assert.strictEqual(r.ok, false);
+  assert.ok(/imprima ou cancele as etiquetas de Camarão cru/.test(r.msg));
+  assert.deepStrictEqual([r.S.produtoId, r.S.copias], [antes.produtoId, 2]);
+  assert.ok(/não tem validade cadastrada em descongelado/.test(ler(D, antes, ['ZZC3']).msg));
+  assert.ok(/imprima ou cancele/.test(ler(D, antes, ['ZZUSO']).msg));
+  assert.strictEqual(ler(D, antes, ['ZZQ0']).ok, false);
+  r = ler(D, antes, ['NAOEXISTE']);
+  assert.strictEqual(r.S.desconhecido, 'NAOEXISTE');
+  assert.strictEqual(r.S.modo, 'nova');
+  r = ler(D, r.S, ['ZZNAO']);
+  assert.deepStrictEqual([r.S.modo, r.msg], ['livre', 'Cancelado.']);
+  assert.strictEqual(D.etiquetas.length, 0);
+  // Passando do máximo por leituras repetidas.
+  r = ler(D, N.sessao(), ['MP001', 'ZZQ50', 'MP001']);
+  assert.ok(/máximo é de 50/.test(r.msg));
+  assert.strictEqual(r.S.copias, 50);
+});
+
+teste('leitor: produto em processo guarda de que etiqueta foi feito', () => {
+  const D = fabrica();
+  ler(D, N.sessao('José'), ['MP001', 'ZZOK']);              // e1: camarão cru
+  ler(D, N.sessao('José'), ['MP001', 'ZZOK']);              // e2: outro camarão
+  let r = ler(D, N.sessao('Ana Lúcia'), ['PP001', 'ZZ000001', 'ZZ000002']);
+  assert.strictEqual(r.msg, 'Feito com Camarão cru (Nº 000002)');
+  assert.ok(/já está na lista/.test(ler(D, r.S, ['ZZ000001']).msg));
+  r = ler(D, r.S, ['ZZOK']);
+  assert.deepStrictEqual(r.imprimir[0].origens, [1, 2]);
+  assert.strictEqual(r.imprimir[0].responsavel, 'Ana Lúcia');
+  // Matéria-prima não tem origem: ler uma etiqueta no meio da entrada é engano.
+  r = ler(D, N.sessao(), ['MP001', 'ZZ000001']);
+  assert.ok(/imprima ou cancele/.test(r.msg));
+  // Etiqueta usada pode ser origem (acabou de ser consumida); descartada, não.
+  ler(D, N.sessao(), ['ZZ000001', 'ZZUSO']);
+  ler(D, N.sessao(), ['ZZ000002', 'ZZM3']);
+  assert.strictEqual(ler(D, N.sessao(), ['PP001', 'ZZ000001']).ok, true);
+  assert.ok(/foi descartada/.test(ler(D, N.sessao(), ['PP001', 'ZZ000002']).msg));
+});
+
+teste('leitor: baixa de etiqueta lida, como usada ou descartada', () => {
+  const D = fabrica();
+  ler(D, N.sessao(), ['MP001', 'ZZQ3', 'ZZOK']);
+  let r = ler(D, N.sessao('José'), ['ZZ000001']);
+  assert.deepStrictEqual([r.S.modo, r.S.etiquetaId], ['etiqueta', 'e1']);
+  assert.strictEqual(r.msg, 'Camarão cru: vence em 2 dias');
+  assert.ok(/leia USADO ou DESCARTAR/.test(ler(D, r.S, ['ZZOK']).msg));
+  r = ler(D, r.S, ['ZZUSO'], AGORA + N.HORA);
+  assert.deepStrictEqual([r.msg, r.baixa, r.S.modo], ['Camarão cru: baixa como usado.', 'e1', 'livre']);
+  assert.deepStrictEqual([D.etiquetas[0].status, D.etiquetas[0].baixaPor, D.etiquetas[0].baixaEm], ['usada', 'José', AGORA + N.HORA]);
+  // Descartar pede o motivo; ler o motivo direto também descarta.
+  r = ler(D, N.sessao(), ['ZZ000002', 'ZZFORA']);
+  assert.deepStrictEqual([r.S.pedindoMotivo, r.msg], [true, 'Qual o motivo do descarte?']);
+  assert.strictEqual(D.etiquetas[1].status, 'ativa');
+  r = ler(D, r.S, ['ZZM1']);
+  assert.strictEqual(r.msg, 'Camarão cru: descartado (vencido).');
+  assert.deepStrictEqual([D.etiquetas[1].status, D.etiquetas[1].motivo], ['descartada', 'Vencido']);
+  r = ler(D, N.sessao(), ['ZZ000003', 'ZZM4']);
+  assert.strictEqual(D.etiquetas[2].motivo, 'Aparência ou cheiro');
+  // Etiqueta que já teve baixa: mostra, mas não baixa de novo.
+  r = ler(D, N.sessao(), ['ZZ000001']);
+  assert.strictEqual(r.msg, 'Camarão cru: já teve baixa');
+  assert.ok(/já teve baixa/.test(ler(D, r.S, ['ZZUSO']).msg));
+  // Ler um produto com uma etiqueta aberta começa etiqueta nova.
+  N.desfazerBaixa(D, 'e1');
+  r = ler(D, N.sessao(), ['ZZ000001', 'MP001']);
+  assert.strictEqual(r.S.modo, 'nova');
+  assert.ok(/Etiqueta de teste lida/.test(ler(D, N.sessao(), ['ZZ000000']).msg));
+});
+
+teste('cartela: todo código impresso vira barras e é entendido de volta', () => {
+  const D = fabrica();
+  N.salvarProduto(D, { nome: 'Sem código', validades: { resfriado: { n: 1, un: 'd' } } });
+  const secoes = N.cartela(D);
+  assert.deepStrictEqual(secoes.map((s) => s.titulo), ['Comandos', 'Número de etiquetas', 'Conservação', 'Motivo do descarte',
+    'Quem está trabalhando', 'Local', 'Matéria-prima', 'Em processo', 'Produto acabado']);
+  assert.deepStrictEqual(secoes[0].itens.map((i) => i.codigo), ['ZZOK', 'ZZNAO', 'ZZUSO', 'ZZFORA']);
+  assert.deepStrictEqual(secoes[4].itens, [{ nome: 'José', codigo: 'ZZPJOSE' }, { nome: 'Ana Lúcia', codigo: 'ZZPANALUCIA' }]);
+  assert.deepStrictEqual(secoes[7].itens, [{ nome: 'Recheio de camarão', codigo: 'PP001' }], 'produto sem código fica fora');
+  const todos = [].concat.apply([], secoes.map((s) => s.itens));
+  assert.strictEqual(new Set(todos.map((i) => i.codigo)).size, todos.length, 'nenhum código repetido');
+  todos.forEach((i) => {
+    assert.ok(/^[A-Z0-9]+$/.test(i.codigo), i.codigo + ': só letras maiúsculas e números');
+    assert.ok(N.code128(i.codigo), i.codigo);
+    assert.ok(['produto', 'comando'].indexOf(N.interpretar(D, i.codigo).tipo) >= 0, i.codigo);
+  });
+  // Sem equipe e sem produto com código, essas seções somem.
+  assert.deepStrictEqual(N.cartela(N.vazio()).map((s) => s.titulo), ['Comandos', 'Número de etiquetas', 'Conservação', 'Motivo do descarte', 'Local']);
+});
+
+teste('dados da primeira versão continuam abrindo', () => {
+  const de = N.carregar({
+    versao: 1, seq: 2,
+    config: { casa: 'Antiga', tamanho: '50x30' },
+    produtos: [{ id: 'p1', nome: 'Caldo', grupo: 'Bases', validades: { resfriado: { n: 3, un: 'd' } } },
+      { id: 'p2', codigo: 'zz1', nome: 'Reservado', validades: { resfriado: { n: 3, un: 'd' } } },
+      { id: 'p3', codigo: 'a1', nome: 'Primeiro', validades: { resfriado: { n: 3, un: 'd' } } },
+      { id: 'p4', codigo: 'A1', nome: 'Repetido', validades: { resfriado: { n: 3, un: 'd' } } }],
+    etiquetas: [{ cod: 1, produtoId: 'p1', nome: 'Caldo', modo: 'resfriado', feitoEm: AGORA, venceEm: AGORA + N.DIA, status: 'ativa', origens: [5, 5, 'x', -1] }],
+  });
+  assert.strictEqual(de.versao, N.VERSAO);
+  assert.deepStrictEqual(de.produtos.map((p) => [p.codigo, p.tipo]), [['', 'pp'], ['', 'pp'], ['A1', 'pp'], ['', 'pp']]);
+  assert.deepStrictEqual([de.etiquetas[0].tipo, de.etiquetas[0].codigo, de.etiquetas[0].origens], ['pp', '', [5]]);
+  assert.deepStrictEqual([de.config.letra, de.config.som, de.config.tamanho], ['normal', true, '50x30']);
 });
 
 console.log(`\n${n} testes passaram.`);

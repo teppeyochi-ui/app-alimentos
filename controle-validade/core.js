@@ -5,10 +5,17 @@
  *
  * Tudo fica num único objeto D, guardado no aparelho (localStorage, chave CHAVE):
  *   D.config     nome da casa, dias de alerta, regra de contagem, tamanho da etiqueta, locais, equipe
- *   D.produtos   catálogo: { id, nome, grupo, validades: { resfriado|congelado|descongelado|ambiente: { n, un } } }
- *   D.etiquetas  cada etiqueta emitida: produto (cópia do nome), modo, local, responsável,
- *                feitoEm, venceEm, status ('ativa' | 'usada' | 'descartada') e dados da baixa
+ *   D.produtos   catálogo: { id, codigo, tipo, nome, grupo, validades: { resfriado|congelado|descongelado|ambiente: { n, un } } }
+ *                codigo é o código da própria empresa (o que vai na cartela); tipo é mp | pp | pa
+ *   D.etiquetas  cada etiqueta emitida: produto (cópia do nome, tipo e código), modo, local, responsável,
+ *                feitoEm, venceEm, origens (números das etiquetas de que foi feita),
+ *                status ('ativa' | 'usada' | 'descartada') e dados da baixa
  * Datas e horas são guardadas em milissegundos (hora do aparelho).
+ *
+ * Leitor de código de barras: tudo o que o app imprime para ser lido começa com RESERVA ("ZZ"),
+ * só com letras maiúsculas e números, que saem iguais em qualquer teclado:
+ *   ZZ000123  etiqueta nº 123        ZZOK imprimir   ZZNAO cancelar   ZZUSO usado   ZZFORA descartar
+ *   ZZQ5 quantidade   ZZC1..4 conservação   ZZM1..5 motivo do descarte   ZZP<nome> pessoa   ZZL<nome> local
  */
 (function (raiz, fabrica) {
   if (typeof module === 'object' && module.exports) module.exports = fabrica();
@@ -21,6 +28,17 @@
   const DIA = 24 * HORA;
   const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
   const MAX_COPIAS = 50;
+  const VERSAO = 2;       // formato dos dados guardados
+  const RESERVA = 'ZZ';   // começo dos códigos do próprio app (etiquetas e comandos)
+
+  // Etapa do produto na casa. `data` é o nome da data que vai impressa na etiqueta.
+  const TIPOS = [
+    { id: 'mp', nome: 'Matéria-prima', data: 'ENTRADA' },
+    { id: 'pp', nome: 'Em processo', data: 'PREPARO' },
+    { id: 'pa', nome: 'Produto acabado', data: 'FABRICAÇÃO' },
+  ];
+  const TIPO = {};
+  TIPOS.forEach((t) => { TIPO[t.id] = t; });
 
   const MODOS = [
     { id: 'resfriado', nome: 'Resfriado', faixa: 'até 4 °C' },
@@ -41,12 +59,22 @@
 
   const MOTIVOS = ['Vencido', 'Sobra de produção', 'Embalagem danificada', 'Aparência ou cheiro', 'Outro'];
 
-  // Largura × altura do rolo, em milímetros.
+  // Largura × altura do rolo, em milímetros. Estes são os mais comuns; nos Ajustes dá para informar outro.
   const TAMANHOS = {
     '60x40': { l: 60, a: 40, nome: '60 × 40 mm' },
     '50x30': { l: 50, a: 30, nome: '50 × 30 mm' },
     '100x50': { l: 100, a: 50, nome: '100 × 50 mm' },
   };
+  const LARGURA = [30, 110];   // a GC420 imprime até 104 mm de largura
+  const ALTURA = [20, 300];
+  // 'LxA' conferido (ou null): é assim que o tamanho fica guardado nos ajustes.
+  function limparTamanho(v) {
+    const m = /^(\d{2,3})x(\d{2,3})$/.exec(String(v || '').replace(/\s/g, '').toLowerCase());
+    if (!m) return null;
+    const l = +m[1], a = +m[2];
+    return l >= LARGURA[0] && l <= LARGURA[1] && a >= ALTURA[0] && a <= ALTURA[1] ? l + 'x' + a : null;
+  }
+  const medidas = (tamanho) => { const m = (limparTamanho(tamanho) || '60x40').split('x'); return { l: +m[0], a: +m[1] }; };
 
   // ---------- datas ----------
   const d2 = (n) => String(n).padStart(2, '0');
@@ -124,7 +152,7 @@
   // ---------- dados ----------
   function vazio() {
     return {
-      versao: 1,
+      versao: VERSAO,
       exemplo: false,
       seq: 0,
       seqProd: 0,
@@ -135,6 +163,8 @@
         tamanho: '60x40',
         locais: ['Câmara fria', 'Geladeira', 'Freezer', 'Estoque seco'],
         equipe: [],
+        letra: 'normal',
+        som: true,
       },
       produtos: [],
       etiquetas: [],
@@ -147,6 +177,18 @@
     return (Array.isArray(v) ? v : String(v || '').split('\n'))
       .map((s) => texto(s, 40))
       .filter((s) => s && !vistos[s.toLowerCase()] && (vistos[s.toLowerCase()] = true));
+  };
+
+  // O código da empresa: maiúsculas, sem espaços. Devolve '' se não servir para código de barras.
+  function limparCodigo(v) {
+    const c = String(v == null ? '' : v).replace(/\s+/g, '').toUpperCase();
+    return /^[A-Z0-9._\/-]{1,20}$/.test(c) ? c : '';
+  }
+  const limparTipo = (v) => (TIPO[v] ? v : 'pp');
+  const limparOrigens = (v) => {
+    const vistos = [];
+    (Array.isArray(v) ? v : []).forEach((c) => { c = Math.round(+c); if (c > 0 && vistos.indexOf(c) < 0 && vistos.length < 12) vistos.push(c); });
+    return vistos;
   };
 
   function limparValidade(v) {
@@ -164,9 +206,11 @@
       casa: texto(c.casa, 40),
       alertaDias: alerta >= 1 && alerta <= 15 ? alerta : base.alertaDias,
       contarDiaPreparo: !!c.contarDiaPreparo,
-      tamanho: TAMANHOS[c.tamanho] ? c.tamanho : base.tamanho,
+      tamanho: limparTamanho(c.tamanho) || base.tamanho,
       locais: linhas(c.locais),
       equipe: linhas(c.equipe),
+      letra: c.letra === 'grande' || c.letra === 'maior' ? c.letra : 'normal',
+      som: c.som !== false,
     };
   }
 
@@ -182,16 +226,20 @@
       if (!p || !p.id || !texto(p.nome)) return;
       const validades = {};
       MODOS.forEach((m) => { const v = limparValidade(p.validades && p.validades[m.id]); if (v) validades[m.id] = v; });
-      D.produtos.push({ id: String(p.id), nome: texto(p.nome), grupo: texto(p.grupo, 30) || 'Outros', validades });
+      const codigo = limparCodigo(p.codigo);
+      const livre = codigo && codigo.indexOf(RESERVA) !== 0 && !D.produtos.some((x) => x.codigo === codigo);
+      D.produtos.push({ id: String(p.id), codigo: livre ? codigo : '', tipo: limparTipo(p.tipo), nome: texto(p.nome), grupo: texto(p.grupo, 30) || 'Outros', validades });
     });
     o.etiquetas.forEach((e) => {
       if (!e || !(e.cod > 0) || !(e.feitoEm > 0) || !(e.venceEm > 0) || !MODO[e.modo]) return;
       const status = e.status === 'usada' || e.status === 'descartada' ? e.status : 'ativa';
       const et = {
-        id: 'e' + e.cod, cod: +e.cod, produtoId: e.produtoId || '', nome: texto(e.nome) || 'Sem nome', grupo: texto(e.grupo, 30),
+        id: 'e' + e.cod, cod: +e.cod, produtoId: e.produtoId || '', codigo: limparCodigo(e.codigo), tipo: limparTipo(e.tipo),
+        nome: texto(e.nome) || 'Sem nome', grupo: texto(e.grupo, 30),
         modo: e.modo, local: texto(e.local, 40), responsavel: texto(e.responsavel, 40), qtd: texto(e.qtd, 20),
         feitoEm: +e.feitoEm, venceEm: +e.venceEm, porHora: !!e.porHora, limitada: !!e.limitada,
         loteOrigem: texto(e.loteOrigem, 20), validadeOrigem: deIso(e.validadeOrigem) != null ? e.validadeOrigem : '',
+        origens: limparOrigens(e.origens),
         status,
       };
       if (status !== 'ativa') {
@@ -213,13 +261,19 @@
     if (!nome) return { erro: 'Escreva o nome do produto.' };
     const repetido = D.produtos.find((p) => p.id !== dados.id && p.nome.toLowerCase() === nome.toLowerCase());
     if (repetido) return { erro: 'Já existe um produto com esse nome.' };
+    const codigo = limparCodigo(dados.codigo);
+    if (texto(dados.codigo) && !codigo) return { erro: 'O código aceita até 20 letras sem acento, números e os sinais - . / _' };
+    if (codigo.indexOf(RESERVA) === 0) return { erro: 'Códigos que começam com ' + RESERVA + ' são do próprio app (etiquetas e comandos). Use outro começo.' };
+    const mesmoCodigo = codigo && D.produtos.find((p) => p.id !== dados.id && p.codigo === codigo);
+    if (mesmoCodigo) return { erro: 'O código ' + codigo + ' já é de ' + mesmoCodigo.nome + '.' };
+    const tipo = limparTipo(dados.tipo);
     const validades = {};
     MODOS.forEach((m) => { const v = limparValidade(dados.validades && dados.validades[m.id]); if (v) validades[m.id] = v; });
     if (!Object.keys(validades).length) return { erro: 'Informe a validade em pelo menos um modo de conservação (de 1 a 999).' };
     const grupo = texto(dados.grupo, 30) || 'Outros';
     let p = dados.id && D.produtos.find((x) => x.id === dados.id);
-    if (p) { p.nome = nome; p.grupo = grupo; p.validades = validades; }
-    else { p = { id: 'p' + (++D.seqProd), nome, grupo, validades }; D.produtos.push(p); }
+    if (p) { p.codigo = codigo; p.tipo = tipo; p.nome = nome; p.grupo = grupo; p.validades = validades; }
+    else { p = { id: 'p' + (++D.seqProd), codigo, tipo, nome, grupo, validades }; D.produtos.push(p); }
     return { produto: p };
   }
 
@@ -254,13 +308,14 @@
       return { erro: 'A validade do fabricante já passou. Este produto não deve ser etiquetado.' };
     }
     const c = calcularValidade({ feitoEm, validade, contarDiaPreparo: D.config.contarDiaPreparo, validadeOrigem });
+    const origens = limparOrigens(o.origens).filter((cod) => D.etiquetas.some((e) => e.cod === cod));
     return {
       copias,
       base: {
-        produtoId: p.id, nome: p.nome, grupo: p.grupo, modo: o.modo,
+        produtoId: p.id, codigo: p.codigo, tipo: p.tipo, nome: p.nome, grupo: p.grupo, modo: o.modo,
         local: texto(o.local, 40), responsavel: texto(o.responsavel, 40), qtd: texto(o.qtd, 20),
         feitoEm, venceEm: c.venceEm, porHora: c.porHora, limitada: c.limitada,
-        loteOrigem: texto(o.loteOrigem, 20), validadeOrigem, status: 'ativa',
+        loteOrigem: texto(o.loteOrigem, 20), validadeOrigem, origens, status: 'ativa',
       },
     };
   }
@@ -272,7 +327,7 @@
     const novas = [];
     for (let i = 0; i < m.copias; i++) {
       const cod = ++D.seq;
-      novas.push(Object.assign({ id: 'e' + cod, cod }, m.base));
+      novas.push(Object.assign({ id: 'e' + cod, cod }, m.base, { origens: m.base.origens.slice() }));
     }
     Array.prototype.push.apply(D.etiquetas, novas);
     return { etiquetas: novas };
@@ -344,11 +399,11 @@
     const campo = (v) => { const s = String(v == null ? '' : v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const quando = (ms) => (ms ? fmtDataAno(ms) + ' ' + fmtHora(ms) : '');
     const SIT = { vencido: 'Ativa, vencida', hoje: 'Ativa, vence hoje', breve: 'Ativa, vence em breve', ok: 'Ativa, no prazo' };
-    const cab = ['Número', 'Produto', 'Grupo', 'Conservação', 'Local', 'Quantidade', 'Responsável', 'Preparo', 'Validade',
-      'Lote do fabricante', 'Validade do fabricante', 'Situação', 'Baixa', 'Motivo do descarte', 'Baixa feita por'];
+    const cab = ['Número', 'Código', 'Produto', 'Tipo', 'Grupo', 'Conservação', 'Local', 'Quantidade', 'Responsável', 'Preparo', 'Validade',
+      'Lote do fabricante', 'Validade do fabricante', 'Feito com', 'Situação', 'Baixa', 'Motivo do descarte', 'Baixa feita por'];
     const corpo = D.etiquetas.slice().sort((a, b) => a.cod - b.cod).map((e) => [
-      fmtCodigo(e.cod), e.nome, e.grupo, MODO[e.modo].nome, e.local, e.qtd, e.responsavel, quando(e.feitoEm), quando(e.venceEm),
-      e.loteOrigem, e.validadeOrigem ? fmtDataAno(deIso(e.validadeOrigem)) : '',
+      fmtCodigo(e.cod), e.codigo, e.nome, TIPO[e.tipo].nome, e.grupo, MODO[e.modo].nome, e.local, e.qtd, e.responsavel, quando(e.feitoEm), quando(e.venceEm),
+      e.loteOrigem, e.validadeOrigem ? fmtDataAno(deIso(e.validadeOrigem)) : '', e.origens.map(fmtCodigo).join(' '),
       e.status === 'ativa' ? SIT[situacao(e.venceEm, agora, D.config.alertaDias)] : (e.status === 'usada' ? 'Usada' : 'Descartada'),
       quando(e.baixaEm), e.motivo || '', e.baixaPor || '',
     ]);
@@ -357,32 +412,35 @@
 
   // ---------- dados de exemplo ----------
   // Prazos ilustrativos, só para o esboço abrir preenchido. Cada casa define os seus com o responsável técnico.
-  // [nome, grupo, resfriado, congelado, descongelado, ambiente]
+  // [nome, grupo, resfriado, congelado, descongelado, ambiente, tipo]
   const CATALOGO_EXEMPLO = [
-    ['Filé de tilápia porcionado', 'Pescados', '3d', '90d', '24h', ''],
-    ['Camarão limpo', 'Pescados', '2d', '90d', '24h', ''],
-    ['Salmão em cubos (cru)', 'Pescados', '24h', '', '', ''],
-    ['Frango desfiado cozido', 'Carnes e aves', '3d', '30d', '', ''],
-    ['Carne moída', 'Carnes e aves', '2d', '90d', '24h', ''],
-    ['Bife de alcatra porcionado', 'Carnes e aves', '3d', '90d', '2d', ''],
-    ['Molho de tomate', 'Molhos e bases', '3d', '30d', '', ''],
-    ['Maionese da casa', 'Molhos e bases', '2d', '', '', ''],
-    ['Caldo de legumes', 'Molhos e bases', '3d', '30d', '', ''],
-    ['Vinagrete', 'Molhos e bases', '2d', '', '', ''],
-    ['Alface higienizada', 'Hortifrúti', '3d', '', '', ''],
-    ['Cebola picada', 'Hortifrúti', '3d', '', '', ''],
-    ['Tomate em cubos', 'Hortifrúti', '2d', '', '', ''],
-    ['Frutas cortadas', 'Hortifrúti', '2d', '', '', ''],
-    ['Queijo muçarela fatiado', 'Laticínios e frios', '5d', '', '', ''],
-    ['Presunto fatiado', 'Laticínios e frios', '3d', '', '', ''],
-    ['Creme de leite (aberto)', 'Laticínios e frios', '3d', '', '', ''],
-    ['Arroz branco cozido', 'Guarnições', '3d', '', '', ''],
-    ['Feijão cozido', 'Guarnições', '3d', '30d', '', ''],
-    ['Purê de batata', 'Guarnições', '2d', '', '', ''],
-    ['Brigadeiro (massa)', 'Confeitaria', '5d', '', '', ''],
-    ['Chantilly batido', 'Confeitaria', '2d', '', '', ''],
-    ['Farinha de trigo (aberta)', 'Secos abertos', '', '', '', '30d'],
-    ['Molho shoyu (aberto)', 'Secos abertos', '90d', '', '', '30d'],
+    ['Filé de tilápia porcionado', 'Pescados', '3d', '90d', '24h', '', 'pp'],
+    ['Camarão limpo', 'Pescados', '2d', '90d', '24h', '', 'mp'],
+    ['Salmão em cubos (cru)', 'Pescados', '24h', '', '', '', 'pp'],
+    ['Frango desfiado cozido', 'Carnes e aves', '3d', '30d', '', '', 'pp'],
+    ['Carne moída', 'Carnes e aves', '2d', '90d', '24h', '', 'mp'],
+    ['Bife de alcatra porcionado', 'Carnes e aves', '3d', '90d', '2d', '', 'pp'],
+    ['Molho de tomate', 'Molhos e bases', '3d', '30d', '', '', 'pp'],
+    ['Maionese da casa', 'Molhos e bases', '2d', '', '', '', 'pp'],
+    ['Caldo de legumes', 'Molhos e bases', '3d', '30d', '', '', 'pp'],
+    ['Vinagrete', 'Molhos e bases', '2d', '', '', '', 'pp'],
+    ['Alface higienizada', 'Hortifrúti', '3d', '', '', '', 'pp'],
+    ['Cebola picada', 'Hortifrúti', '3d', '', '', '', 'pp'],
+    ['Tomate em cubos', 'Hortifrúti', '2d', '', '', '', 'pp'],
+    ['Frutas cortadas', 'Hortifrúti', '2d', '', '', '', 'pp'],
+    ['Queijo muçarela fatiado', 'Laticínios e frios', '5d', '', '', '', 'mp'],
+    ['Presunto fatiado', 'Laticínios e frios', '3d', '', '', '', 'mp'],
+    ['Creme de leite (aberto)', 'Laticínios e frios', '3d', '', '', '', 'mp'],
+    ['Arroz branco cozido', 'Guarnições', '3d', '', '', '', 'pp'],
+    ['Feijão cozido', 'Guarnições', '3d', '30d', '', '', 'pp'],
+    ['Purê de batata', 'Guarnições', '2d', '', '', '', 'pp'],
+    ['Brigadeiro (massa)', 'Confeitaria', '5d', '', '', '', 'pp'],
+    ['Chantilly batido', 'Confeitaria', '2d', '', '', '', 'pp'],
+    ['Farinha de trigo (aberta)', 'Secos abertos', '', '', '', '30d', 'mp'],
+    ['Molho shoyu (aberto)', 'Secos abertos', '90d', '', '', '30d', 'mp'],
+    ['Lasanha de carne 500 g', 'Prontos para embalar', '', '90d', '', '', 'pa'],
+    ['Molho de tomate pote 300 g', 'Prontos para embalar', '15d', '', '', '', 'pa'],
+    ['Brigadeiro caixa com 12', 'Prontos para embalar', '7d', '', '', '', 'pa'],
   ];
 
   // Quem mais vai para o lixo no exemplo (chance de descarte); os demais ficam em 10%.
@@ -399,8 +457,11 @@
     D.config.equipe = ['Ana', 'Bruno', 'Carla', 'Diego'];
 
     const val = (s) => { const m = /^(\d+)([dh])$/.exec(s); return m ? { n: +m[1], un: m[2] } : null; };
+    // Códigos de exemplo no formato TIPO + número (MP001, PP001, PA001). Na casa valem os códigos que ela já usa.
+    const conta = { mp: 0, pp: 0, pa: 0 };
     CATALOGO_EXEMPLO.forEach((l) => {
-      salvarProduto(D, { nome: l[0], grupo: l[1], validades: { resfriado: val(l[2]), congelado: val(l[3]), descongelado: val(l[4]), ambiente: val(l[5]) } });
+      const codigo = l[6].toUpperCase() + String(++conta[l[6]]).padStart(3, '0');
+      salvarProduto(D, { codigo, tipo: l[6], nome: l[0], grupo: l[1], validades: { resfriado: val(l[2]), congelado: val(l[3]), descongelado: val(l[4]), ambiente: val(l[5]) } });
     });
     const prod = (nome) => D.produtos.find((p) => p.nome === nome);
 
@@ -463,15 +524,18 @@
     juntar('Camarão limpo', 'descongelado', L[1], 'Bruno', '2 kg', agora - 19 * HORA);
     juntar('Frango desfiado cozido', 'resfriado', L[0], 'Ana', '4 kg', ha(2, 14, 0));
     juntar('Arroz branco cozido', 'resfriado', L[1], 'Diego', '2 cubas', ha(1, 11, 20));
-    juntar('Molho de tomate', 'resfriado', L[0], 'Ana', '6 L', ha(1, 15, 45));
+    const molho = juntar('Molho de tomate', 'resfriado', L[0], 'Ana', '6 L', ha(1, 15, 45));
     juntar('Queijo muçarela fatiado', 'resfriado', L[2], 'Carla', '1 kg', ha(0, 8, 10),
       { loteOrigem: 'L2291', validadeOrigem: dataIso(somarDias(agora, 3)) });
     juntar('Brigadeiro (massa)', 'resfriado', L[4], 'Diego', '3 kg', ha(0, 9, 0));
     juntar('Caldo de legumes', 'congelado', L[3], 'Ana', '8 L', ha(26, 15, 0));
     juntar('Farinha de trigo (aberta)', 'ambiente', L[5], 'Ana', '25 kg', ha(10, 7, 30));
     juntar('Feijão cozido', 'congelado', L[3], 'Diego', '5 kg', ha(5, 13, 0));
-    juntar('Carne moída', 'congelado', L[3], 'Bruno', '6 kg', ha(12, 10, 0));
+    const carne = juntar('Carne moída', 'congelado', L[3], 'Bruno', '6 kg', ha(12, 10, 0));
     juntar('Filé de tilápia porcionado', 'congelado', L[3], 'Bruno', '10 kg', ha(20, 16, 0));
+    // Acabados, cada um ligado à etiqueta de que foi feito (a origem entra depois que os números existem).
+    const potes = juntar('Molho de tomate pote 300 g', 'resfriado', L[0], 'Ana', '18 potes', ha(1, 16, 30));
+    const lasanha = juntar('Lasanha de carne 500 g', 'congelado', L[3], 'Bruno', '12 un.', ha(4, 11, 0));
 
     // Os números seguem a ordem em que as etiquetas foram feitas.
     fila.sort((a, b) => a.feitoEm - b.feitoEm).forEach((e) => {
@@ -479,11 +543,214 @@
       e.id = 'e' + e.cod;
       D.etiquetas.push(e);
     });
+    potes.origens = [molho.cod];
+    lasanha.origens = [carne.cod];
     return D;
   }
 
+  // ---------- código de barras (Code 128, conjunto B) ----------
+  // Larguras das barras e dos espaços de cada símbolo (tabela da norma): 0–102 dados, 104 início B, 106 fim.
+  const C128 = ('212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 122231 113222 ' +
+    '123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 212123 212321 232121 ' +
+    '111323 131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 113321 133121 313121 211331 ' +
+    '231131 213113 213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 431111 111224 111422 121124 121421 ' +
+    '141122 141221 112214 112412 122114 122411 142112 142211 241211 221114 413111 241112 134111 111242 121142 121241 114212 ' +
+    '124112 124211 411212 421112 421211 212141 214121 412121 111143 111341 131141 114113 114311 411113 411311 113141 114131 ' +
+    '311141 411131 211412 211214 211232 2331112').split(' ');
+
+  // Dígito verificador: (104 + soma de valor × posição) mod 103.
+  function verificador128(txt) {
+    let soma = 104;
+    for (let i = 0; i < txt.length; i++) soma += (txt.charCodeAt(i) - 32) * (i + 1);
+    return soma % 103;
+  }
+
+  // As barras de um texto: sequência de módulos, '1' preto e '0' branco (sem as margens claras). null se algum caractere não couber.
+  function code128(txt) {
+    txt = String(txt == null ? '' : txt);
+    if (!txt || !/^[\x20-\x7e]+$/.test(txt)) return null;
+    const simbolos = [104];
+    for (let i = 0; i < txt.length; i++) simbolos.push(txt.charCodeAt(i) - 32);
+    simbolos.push(verificador128(txt), 106);
+    let bits = '';
+    simbolos.forEach((v) => {
+      const larguras = C128[v];
+      for (let i = 0; i < larguras.length; i++) bits += (i % 2 ? '0' : '1').repeat(+larguras[i]);
+    });
+    return bits;
+  }
+
+  // ---------- códigos do leitor ----------
+  // Nome de pessoa ou local dentro de um código: sem acento, só letras e números, até 16.
+  const chave = (v) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
+  const CODIGO = {
+    ok: RESERVA + 'OK',
+    cancelar: RESERVA + 'NAO',
+    usado: RESERVA + 'USO',
+    descartar: RESERVA + 'FORA',
+    etiqueta: (cod) => RESERVA + fmtCodigo(cod),
+    qtd: (n) => RESERVA + 'Q' + n,
+    modo: (id) => RESERVA + 'C' + (MODOS.findIndex((m) => m.id === id) + 1),
+    motivo: (m) => RESERVA + 'M' + (MOTIVOS.indexOf(m) + 1),
+    pessoa: (nome) => RESERVA + 'P' + chave(nome),
+    local: (nome) => RESERVA + 'L' + chave(nome),
+  };
+  const QTDS_CARTELA = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 24, 30];
+  const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
+
+  // O que é este código? Produto da casa, etiqueta do app, comando da cartela ou nada conhecido.
+  function interpretar(D, bruto) {
+    const c = String(bruto == null ? '' : bruto).replace(/[\x00-\x1f\x7f]/g, '').trim().toUpperCase();
+    if (!c) return { tipo: 'vazio' };
+    const p = D.produtos.find((x) => x.codigo && x.codigo === c);
+    if (p) return { tipo: 'produto', produto: p };
+    if (c.indexOf(RESERVA) !== 0) return { tipo: 'desconhecido', codigo: c };
+    const r = c.slice(RESERVA.length);
+    if (/^\d+$/.test(r)) {
+      if (+r === 0) return { tipo: 'teste' };
+      const e = D.etiquetas.find((x) => x.cod === +r);
+      return e ? { tipo: 'etiqueta', etiqueta: e } : { tipo: 'erro', msg: 'A etiqueta Nº ' + fmtCodigo(+r) + ' não está neste aparelho.' };
+    }
+    const fixo = { OK: 'ok', NAO: 'cancelar', USO: 'usado', FORA: 'descartar' }[r];
+    if (fixo) return { tipo: 'comando', comando: fixo };
+    let m = /^Q(\d{1,2})$/.exec(r);
+    if (m) return { tipo: 'comando', comando: 'qtd', valor: +m[1] };
+    m = /^C([1-9])$/.exec(r);
+    if (m && MODOS[+m[1] - 1]) return { tipo: 'comando', comando: 'modo', valor: MODOS[+m[1] - 1].id };
+    m = /^M([1-9])$/.exec(r);
+    if (m && MOTIVOS[+m[1] - 1]) return { tipo: 'comando', comando: 'motivo', valor: MOTIVOS[+m[1] - 1] };
+    m = /^([PL])(.+)$/.exec(r);
+    if (m) {
+      const lista = m[1] === 'P' ? D.config.equipe : D.config.locais;
+      const nome = lista.find((n) => chave(n) === m[2]);
+      if (nome) return { tipo: 'comando', comando: m[1] === 'P' ? 'pessoa' : 'local', valor: nome };
+      return { tipo: 'erro', msg: (m[1] === 'P' ? 'Esse nome não está mais na equipe.' : 'Esse local não está mais na lista.') + ' Imprima a cartela de novo.' };
+    }
+    return { tipo: 'erro', msg: 'Código do app que este aparelho não conhece: ' + c };
+  }
+
+  // ---------- o leitor, passo a passo ----------
+  /*
+   * A tela do leitor está sempre numa de três situações (S.modo):
+   *   'livre'     esperando um código
+   *   'nova'      um produto foi lido: etiquetas novas a caminho (falta confirmar)
+   *   'etiqueta'  uma etiqueta já impressa foi lida: dar baixa como usada ou descartada
+   * bipar() recebe o código lido e devolve a situação seguinte, a frase para a tela e, se for o caso,
+   * as etiquetas a imprimir. Os botões da tela mandam os mesmos códigos da cartela: é um caminho só.
+   */
+  const sessao = (operador) => ({ modo: 'livre', operador: operador || '', desconhecido: '' });
+
+  function bipar(D, S, bruto, agora) {
+    const L = interpretar(D, bruto);
+    const com = (extra) => Object.assign({}, S, { desconhecido: '' }, extra);
+    const erro = (msg) => ({ S: com(), ok: false, msg });
+    const bom = (novo, msg, extra) => Object.assign({ S: novo, ok: true, msg }, extra);
+    const livre = () => sessao(S.operador);
+
+    if (L.tipo === 'vazio') return { S, ok: true, msg: '' };
+    if (L.tipo === 'erro') return erro(L.msg);
+    if (L.tipo === 'teste') return bom(com(), 'Etiqueta de teste lida. Impressora e leitor estão funcionando.');
+    if (L.tipo === 'desconhecido') return { S: com({ desconhecido: L.codigo }), ok: false, msg: 'Código não cadastrado: ' + L.codigo };
+
+    const produto = S.modo === 'nova' ? D.produtos.find((x) => x.id === S.produtoId) : null;
+    const etiqueta = S.modo === 'etiqueta' ? D.etiquetas.find((x) => x.id === S.etiquetaId) : null;
+    if ((S.modo === 'nova' && !produto) || (S.modo === 'etiqueta' && !etiqueta)) return bipar(D, livre(), bruto, agora);
+    const termine = () => erro('Antes, imprima ou cancele as etiquetas de ' + produto.nome + '.');
+
+    if (L.tipo === 'produto') {
+      const p = L.produto;
+      if (S.modo === 'nova') {
+        if (p.id !== produto.id) return termine();
+        if (S.copias >= MAX_COPIAS) return erro('O máximo é de ' + MAX_COPIAS + ' etiquetas por vez.');
+        return bom(com({ copias: S.copias + 1 }), (S.copias + 1) + ' etiquetas de ' + p.nome);
+      }
+      return bom({
+        modo: 'nova', operador: S.operador, desconhecido: '', produtoId: p.id, conserv: modosDoProduto(p)[0].id,
+        copias: 1, local: '', qtd: '', lote: '', valOrig: '', origens: [],
+      }, p.nome);
+    }
+
+    if (L.tipo === 'etiqueta') {
+      const e = L.etiqueta;
+      if (S.modo === 'nova') {
+        // Matéria-prima não é feita de outra etiqueta; nos demais tipos, a etiqueta lida entra como origem.
+        if (produto.tipo === 'mp') return termine();
+        if (e.status === 'descartada') return erro('A etiqueta Nº ' + fmtCodigo(e.cod) + ' foi descartada e não pode entrar como origem.');
+        if (S.origens.indexOf(e.cod) >= 0) return erro('A etiqueta Nº ' + fmtCodigo(e.cod) + ' já está na lista.');
+        if (S.origens.length >= 12) return erro('O máximo é de 12 origens por etiqueta.');
+        return bom(com({ origens: S.origens.concat(e.cod) }), 'Feito com ' + e.nome + ' (Nº ' + fmtCodigo(e.cod) + ')');
+      }
+      return bom({ modo: 'etiqueta', operador: S.operador, desconhecido: '', etiquetaId: e.id, pedindoMotivo: false },
+        e.nome + ': ' + (e.status === 'ativa' ? textoRestante(e.venceEm, agora, e.porHora) : 'já teve baixa'));
+    }
+
+    const c = L.comando, v = L.valor;
+    if (c === 'cancelar') return bom(livre(), S.modo === 'livre' ? 'Nada em andamento.' : 'Cancelado.');
+    if (c === 'pessoa') return bom(com({ operador: v }), 'Quem está trabalhando: ' + v);
+
+    if (S.modo === 'nova') {
+      if (c === 'qtd') {
+        if (!(v >= 1 && v <= MAX_COPIAS)) return erro('O número de etiquetas vai de 1 a ' + MAX_COPIAS + '.');
+        return bom(com({ copias: v }), plural(v, 'etiqueta', 'etiquetas') + ' de ' + produto.nome);
+      }
+      if (c === 'modo') {
+        if (!produto.validades[v]) return erro(produto.nome + ' não tem validade cadastrada em ' + MODO[v].nome.toLowerCase() + '.');
+        return bom(com({ conserv: v }), MODO[v].nome + ': validade de ' + fmtValidade(produto.validades[v]));
+      }
+      if (c === 'local') return bom(com({ local: v }), 'Local: ' + v);
+      if (c === 'ok') {
+        const r = emitir(D, {
+          produtoId: produto.id, modo: S.conserv, local: S.local, responsavel: S.operador, qtd: S.qtd, copias: S.copias,
+          loteOrigem: S.lote, validadeOrigem: S.valOrig, origens: S.origens,
+        }, agora);
+        if (r.erro) return erro(r.erro);
+        const n = r.etiquetas.length;
+        return bom(livre(), plural(n, 'etiqueta', 'etiquetas') + ' de ' + produto.nome + (n === 1 ? ': registrada.' : ': registradas.'), { imprimir: r.etiquetas });
+      }
+      return termine();
+    }
+
+    if (S.modo === 'etiqueta') {
+      if (c !== 'usado' && c !== 'descartar' && c !== 'motivo') return erro('Para esta etiqueta, leia USADO ou DESCARTAR.');
+      if (etiqueta.status !== 'ativa') return erro('A etiqueta Nº ' + fmtCodigo(etiqueta.cod) + ' já teve baixa.');
+      if (c === 'descartar') return bom(com({ pedindoMotivo: true }), 'Qual o motivo do descarte?');
+      darBaixa(D, etiqueta.id, c === 'usado' ? { tipo: 'usada', por: S.operador } : { tipo: 'descartada', motivo: v, por: S.operador }, agora);
+      return bom(livre(), etiqueta.nome + (c === 'usado' ? ': baixa como usado.' : ': descartado (' + v.toLowerCase() + ').'), { baixa: etiqueta.id });
+    }
+
+    return erro('Leia primeiro o código de um produto ou de uma etiqueta.');
+  }
+
+  // A cartela de códigos para imprimir e deixar na bancada: comandos do app e os produtos que têm código.
+  function cartela(D) {
+    const secoes = [
+      { titulo: 'Comandos', itens: [
+        { nome: 'IMPRIMIR', codigo: CODIGO.ok }, { nome: 'CANCELAR', codigo: CODIGO.cancelar },
+        { nome: 'USADO', codigo: CODIGO.usado }, { nome: 'DESCARTAR', codigo: CODIGO.descartar },
+      ] },
+      { titulo: 'Número de etiquetas', itens: QTDS_CARTELA.map((n) => ({ nome: String(n), codigo: CODIGO.qtd(n) })) },
+      { titulo: 'Conservação', itens: MODOS.map((m) => ({ nome: m.nome, codigo: CODIGO.modo(m.id) })) },
+      { titulo: 'Motivo do descarte', itens: MOTIVOS.map((m) => ({ nome: m, codigo: CODIGO.motivo(m) })) },
+    ];
+    const nomes = (titulo, lista, codigo) => {
+      const itens = lista.filter((n) => chave(n)).map((n) => ({ nome: n, codigo: codigo(n) }));
+      if (itens.length) secoes.push({ titulo, itens });
+    };
+    nomes('Quem está trabalhando', D.config.equipe, CODIGO.pessoa);
+    nomes('Local', D.config.locais, CODIGO.local);
+    TIPOS.forEach((t) => {
+      const itens = D.produtos.filter((p) => p.tipo === t.id && p.codigo)
+        .sort((a, b) => a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric: true }))
+        .map((p) => ({ nome: p.nome, codigo: p.codigo }));
+      if (itens.length) secoes.push({ titulo: t.nome, produto: true, itens });
+    });
+    return secoes;
+  }
+
   return {
-    CHAVE, HORA, DIA, MAX_COPIAS, MODOS, MODO, SITUACOES, MOTIVOS, TAMANHOS,
+    CHAVE, VERSAO, RESERVA, HORA, DIA, MAX_COPIAS, MODOS, MODO, TIPOS, TIPO, SITUACOES, MOTIVOS, TAMANHOS, LARGURA, ALTURA,
+    limparTamanho, medidas, limparCodigo, code128, verificador128, chave, CODIGO, plural,
+    interpretar, sessao, bipar, cartela,
     inicioDoDia, fimDoDia, somarDias, diasEntre, dataIso, deIso,
     fmtData, fmtDataAno, fmtHora, diaSemana, fmtCodigo, fmtValidade,
     calcularValidade, situacao, textoRestante,

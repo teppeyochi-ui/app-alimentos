@@ -6,7 +6,7 @@
  * atualização publicada aparece na abertura seguinte do app.
  * Mude VERSION a cada atualização para descartar o cache antigo.
  */
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const CACHE = 'validade-' + VERSION;
 
 const APP_SHELL = [

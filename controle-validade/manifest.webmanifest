@@ -1,7 +1,7 @@
 {
   "name": "Validade em Dia — controle de validade",
   "short_name": "Validade",
-  "description": "Controle de validade para cozinhas: etiquetas com a validade calculada, painel do que vence e relatório de perdas.",
+  "description": "Controle de validade: entrada e etiquetagem com leitor de código de barras, painel do que vence e relatório de perdas.",
   "lang": "pt-BR",
   "dir": "ltr",
   "id": "./index.html",

@@ -32,10 +32,11 @@
   --barra: #2a78d6;
   --trilho: #e3e8ee;
 
-  /* A etiqueta é papel térmico: branca com tinta preta nos dois temas */
+  /* A etiqueta e a cartela são papel: branco com tinta preta nos dois temas */
   --papel: #ffffff;
   --tinta: #111111;
   --papel-borda: #c9d0d8;
+  --papel-linha: #9aa3ad;
 
   --fonte: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
@@ -100,11 +101,15 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
+/* Tamanho das letras (Ajustes): quase tudo é medido em rem, então a tela inteira acompanha. */
+html[data-letra="grande"] { font-size: 112.5%; }
+html[data-letra="maior"] { font-size: 125%; }
+
 body {
   margin: 0;
   background: var(--bg);
   color: var(--texto);
-  font: 16px/1.45 var(--fonte);
+  font: 1rem/1.45 var(--fonte);
   -webkit-text-size-adjust: 100%;
 }
 
@@ -168,6 +173,8 @@ main h2 { font-size: 1rem; font-weight: 700; }
 .bt-perigo { color: var(--perigo-texto); }
 .bt-grande { min-height: 54px; font-size: 1.05rem; width: 100%; white-space: normal; }
 .bt-icone { width: 44px; padding: 0; }
+.bt-mini { min-height: 36px; padding: 4px 12px; font-size: .9rem; }
+.bt:disabled { opacity: .4; cursor: default; }
 .bt svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
 input[type="text"], input[type="search"], input[type="number"], input[type="date"], input[type="datetime-local"], select, textarea {
@@ -242,9 +249,9 @@ button.tile.on { border-color: var(--prim); box-shadow: 0 0 0 2px var(--prim); }
 .vazio strong { display: block; color: var(--texto); margin-bottom: 4px; }
 
 /* ---------- etiquetar ---------- */
-.filtro-grupos { display: flex; gap: 8px; flex-wrap: wrap; }
-.filtro-grupos button { min-height: 38px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--borda); background: var(--sup); font-weight: 600; font-size: .9rem; }
-.filtro-grupos button.on { background: var(--prim); border-color: var(--prim); color: var(--prim-texto); }
+.filtro { display: flex; gap: 8px; flex-wrap: wrap; }
+.filtro button { min-height: 38px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--borda); background: var(--sup); font-weight: 600; font-size: .9rem; }
+.filtro button.on { background: var(--prim); border-color: var(--prim); color: var(--prim-texto); }
 .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
 .prod {
   display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: left;
@@ -302,17 +309,101 @@ details[open] summary { margin-bottom: 12px; }
   padding: .7em .9em;
   display: flex; flex-direction: column; justify-content: space-between; gap: .25em;
 }
-.etq-topo { display: flex; justify-content: space-between; gap: 1em; font-size: .95em; font-weight: 700; }
+.etq-topo { display: flex; justify-content: space-between; align-items: center; gap: 1em; font-size: .95em; font-weight: 700; white-space: nowrap; }
 .etq-modo { background: var(--tinta); color: var(--papel); padding: .05em .5em; letter-spacing: .04em; }
-.etq-nome { font-family: var(--fonte); font-size: 1.85em; font-weight: 800; line-height: 1.05; text-transform: uppercase; overflow-wrap: anywhere; }
+.etq-nome {
+  font-family: var(--fonte); font-size: 1.85em; font-weight: 800; line-height: 1.08; text-transform: uppercase; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  /* Folga em cima para o til e os acentos das maiúsculas não serem cortados; a margem devolve o espaço. */
+  padding-top: .16em; margin-top: -.12em;
+}
 .etq-nome.longo { font-size: 1.45em; }
+.etq-nome.muito-longo { font-size: 1.15em; }
 .etq-linha { display: flex; justify-content: space-between; align-items: baseline; gap: 1em; }
 .etq-linha span { font-size: .9em; letter-spacing: .06em; }
 .etq-linha b { font-size: 1.1em; font-weight: 700; }
 .etq-val { border-top: .12em solid var(--tinta); border-bottom: .12em solid var(--tinta); padding: .2em 0; }
 .etq-val b { font-family: var(--fonte); font-size: 1.9em; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; }
-.etq-pe { font-size: .9em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.etq-casa { font-size: .8em; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.etq-pe { font-size: .9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.etq-barras { display: flex; justify-content: center; }
+.etq-rodape { display: flex; justify-content: space-between; gap: 1em; font-size: .8em; white-space: nowrap; }
+.etq-casa { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Código de barras: a largura vem calculada (ver app.js); a cor é a da tinta. */
+.cb { display: block; fill: currentColor; height: 2.6em; }
+/* Etiqueta só com um código da cartela: barras mais altas. */
+.etq-codigo .cb { height: 5em; }
+.etq-codigo .etq-rodape { justify-content: center; font-size: 1em; }
+
+/* ---------- leitor ---------- */
+/* Tela de operação: uma coisa por vez, letras e botões grandes. */
+.leitor-entrada { display: flex; flex-direction: column; gap: 6px; }
+.leitor-entrada > label { display: flex; align-items: center; gap: 8px; font-size: 1.15rem; font-weight: 700; }
+.leitor-entrada > label svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; flex: none; }
+.leitor-linha { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.leitor-linha input { min-height: 60px; font-size: 1.4rem; font-family: var(--mono); letter-spacing: .04em; border: 2px solid var(--prim); }
+.leitor-linha .bt { min-height: 60px; padding-inline: 22px; font-size: 1.1rem; }
+
+.retorno { display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap; padding: 14px 16px; border-radius: var(--raio); font-size: 1.25rem; font-weight: 700; }
+.retorno p { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.retorno .ico { width: 28px; height: 28px; }
+.retorno.bom { background: var(--ok-fundo); }
+.retorno.ruim { background: var(--vencido-fundo); }
+
+.leitor-livre { display: flex; flex-direction: column; gap: 10px; padding: 20px 16px; border: 1px dashed var(--borda); border-radius: var(--raio); background: var(--sup); }
+.leitor-livre h2 { font-size: 1.5rem; }
+.leitor-guia { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; font-size: 1.1rem; }
+
+.sobre { font-size: .95rem; color: var(--texto-2); font-weight: 600; }
+.leitor-cartao .leitor-nome { font-size: 2rem; line-height: 1.15; overflow-wrap: anywhere; }
+.leitor-cartao h3 { font-size: 1.2rem; }
+.leitor-vence { font-size: 1.25rem; }
+.escolhas { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: 10px; }
+.escolha {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left;
+  min-height: 64px; padding: 12px 14px; min-width: 0;
+  border: 2px solid var(--borda); border-radius: 12px; background: var(--sup);
+}
+.escolha strong { font-size: 1.1rem; overflow-wrap: anywhere; }
+.escolha span { font-size: .9rem; color: var(--texto-2); }
+.escolha.on { border-color: var(--prim); background: var(--prim-suave); }
+.leitor-qtd { display: flex; align-items: center; justify-content: center; gap: 18px; }
+.leitor-qtd p { font-size: 1.5rem; min-width: 7em; text-align: center; }
+.leitor-qtd strong { font-size: 2.6rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.bt-redondo { width: 68px; height: 68px; border-radius: 50%; padding: 0; font-size: 2rem; line-height: 1; flex: none; }
+.leitor-acoes { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+.bt-enorme { min-height: 76px; font-size: 1.4rem; white-space: normal; }
+.origens { display: flex; flex-direction: column; gap: 6px; }
+.origens ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.origens li { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 6px 10px; border: 1px solid var(--borda); border-radius: 10px; }
+.origens li span { min-width: 0; overflow-wrap: anywhere; }
+.pill-grande { font-size: 1.1rem; padding: 4px 14px 4px 8px; }
+.pill-grande .ico { width: 20px; height: 20px; }
+.leitor-pe { display: flex; flex-direction: column; gap: 12px; }
+.leitor-pe .barra { align-items: flex-end; }
+.leituras .item { flex-wrap: nowrap; align-items: flex-start; gap: 10px; font-size: .95rem; }
+.leituras .item span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.campos-linha { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.campos-linha .campo { flex: 0 1 220px; }
+.passos { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 8px; font-size: .95rem; }
+
+/* ---------- cartela de códigos (folha A4: medidas em mm, iguais na tela e no papel) ---------- */
+.folha { padding: 0; }
+.cart { box-sizing: content-box; width: 190mm; padding: 6mm; background: var(--papel); color: var(--tinta); font-family: var(--fonte); }
+.cart-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 6mm; padding-bottom: 2mm; border-bottom: .5mm solid var(--tinta); font-size: 11pt; }
+.cart-topo strong { font-size: 16pt; }
+.cart-sec { margin-top: 5mm; }
+.cart-sec h3 { margin: 0 0 2mm; font-size: 11pt; text-transform: uppercase; letter-spacing: .05em; break-after: avoid; }
+.cart-grade { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; }
+.cart-cel {
+  display: flex; flex-direction: column; align-items: center; gap: 1mm; text-align: center;
+  padding: 2.5mm 2mm; min-width: 0;
+  border: .3mm solid var(--papel-linha); border-radius: 1.5mm;
+  break-inside: avoid;
+}
+.cart-cel.dupla { grid-column: span 2; }
+.cart-cel .cb { height: 12mm; max-width: 100%; }
+.cart-cel strong { font-size: 11pt; line-height: 1.15; overflow-wrap: anywhere; }
+.cart-cel span { font-size: 8pt; }
 
 /* ---------- perdas ---------- */
 .duas-iguais { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
@@ -376,12 +467,15 @@ dialog::backdrop { background: rgba(8, 14, 24, .55); }
   .item-acoes .bt-icone { flex: 0 0 44px; }
   .barras { grid-template-columns: minmax(0, 8em) minmax(40px, 1fr) auto; }
   .linha-val { grid-template-columns: minmax(0, 1fr) 70px 96px; }
+  .leitor-cartao .leitor-nome { font-size: 1.6rem; }
+  .leitor-acoes { grid-template-columns: minmax(0, 1fr); }
+  .leitor-qtd { gap: 10px; }
   th, td { padding: 8px 10px; }
   td.quebra { min-width: 9em; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .bt, .prod, .tile { transition: background-color .12s, border-color .12s; }
+  .bt, .prod, .tile, .escolha { transition: background-color .12s, border-color .12s; }
 }
 
 /* ---------- impressão: só as etiquetas, uma por página, no tamanho do rolo ---------- */
@@ -397,4 +491,5 @@ dialog::backdrop { background: rgba(8, 14, 24, .55); }
     break-after: page; page-break-after: always;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
+  #impressao .cart { width: auto; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

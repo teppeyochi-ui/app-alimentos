@@ -12,8 +12,10 @@ Endereço (depois de publicado): https://teppeyochi-ui.github.io/app-alimentos/c
 
 ![Leitor: entrada de matéria-prima](capturas/13-leitor-entrada.png)
 
-É um esboço navegável: abre com dados de exemplo, tudo funciona de verdade,
-mas os dados ficam só no aparelho. O que falta para virar produto está em
+É um esboço navegável: abre com dados de exemplo e tudo funciona de verdade.
+Os dados ficam no aparelho e, se a casa quiser, também na
+[nuvem](#nuvem-vários-aparelhos-os-mesmos-dados), para todos os aparelhos
+verem o mesmo painel. O que falta para virar produto está em
 [Próximos passos](#próximos-passos).
 
 ## O que já faz
@@ -26,7 +28,7 @@ mas os dados ficam só no aparelho. O que falta para virar produto está em
 | Produtos | Catálogo por tipo (matéria-prima, em processo, produto acabado). Cada produto tem o **código da casa**, o grupo e a validade em até quatro modos: resfriado, congelado, descongelado e ambiente, em dias ou horas. |
 | Estoque | O que há em estoque (etiquetas ativas por produto, com a que vence primeiro), o histórico dos **recebimentos** e das **contagens**. Daqui se começa uma contagem. |
 | Perdas | Etiquetas emitidas, usadas e descartadas em 7 ou 30 dias, aproveitamento, descartes por motivo, produtos mais descartados e as últimas baixas. Exporta planilha (CSV). |
-| Ajustes | Nome da casa, impressora e tamanho da etiqueta, tamanho das letras, som, dias de alerta, regra de contagem dos dias, locais, equipe, cópia de segurança. |
+| Ajustes | Nome da casa, impressora e tamanho da etiqueta, tamanho das letras, som, dias de alerta, regra de contagem dos dias, locais, equipe, ligação com a nuvem, cópia de segurança. |
 
 ## Operação com o leitor
 
@@ -181,6 +183,33 @@ também em modo quiosque (`--kiosk`); teste na máquina antes de adotar. A
 cartela em A4 vai para outra impressora, então imprima-a abrindo o app pelo
 Chrome normal.
 
+## Nuvem: vários aparelhos, os mesmos dados
+
+Ligada a um projeto do Supabase, a casa inteira usa uma conta só, e todos os
+aparelhos veem o mesmo painel, o mesmo catálogo e o mesmo estoque. Sem
+internet o aparelho continua trabalhando e envia tudo quando a conexão volta.
+O passo a passo para criar o projeto e ligar os aparelhos está em
+[LIGAR-NUVEM.md](LIGAR-NUVEM.md).
+
+![Aparelho ligado à nuvem](capturas/24-nuvem-ligada.png)
+
+Como funciona por dentro:
+
+- **Uma linha por registro** (produto, etiqueta, recebimento, contagem e os
+  ajustes da casa). Cada aparelho envia só os campos que mudaram, e o servidor
+  junta ao que já tem: se um aparelho mudou o local de uma etiqueta enquanto
+  outro dava baixa nela, ficam as duas mudanças. No mesmo campo, vale a que
+  chegou por último.
+- **Números por faixa:** cada aparelho reserva no servidor uma faixa de
+  números (mil etiquetas de cada vez) e só usa os dela. Dois aparelhos nunca
+  imprimem a mesma etiqueta, mesmo sem internet.
+- **Em aberto é de cada aparelho:** o recebimento ou a contagem aberta num
+  aparelho não mistura com o trabalho dos outros.
+- **Segurança:** cada conta só enxerga as próprias linhas, e ninguém escreve
+  direto nas tabelas, só pelas três funções do banco.
+
+Sem o projeto configurado nada disso roda: o app segue só no aparelho.
+
 ## Como a validade é calculada
 
 - **Em dias:** vence no fim do dia, *n* dias depois do preparo ou da entrada.
@@ -212,9 +241,10 @@ abre direto na tela do leitor.
 
 1. **Carregar a tabela de códigos da casa** de uma planilha, em vez de
    cadastrar produto por produto.
-2. **Contas e dados na nuvem.** Hoje cada aparelho tem os seus dados. Com um
-   banco (o Supabase já usado no Diário da Linha Skin serve), o computador da
-   recepção e o do escritório enxergam o mesmo painel, com login.
+2. **Provar a nuvem num projeto de verdade.** A sincronização foi testada
+   contra um servidor que imita o Supabase; falta a primeira ligação real.
+   Depois: histórico antigo só na nuvem (hoje o aparelho guarda tudo, e o
+   espaço do navegador tem limite) e novidades na hora, sem esperar 20 segundos.
 3. **Pedido de compra:** hoje o recebimento registra o que chegou; com o
    pedido cadastrado, o app compararia sozinho o comprado com o recebido.
 4. **Baixa parcial e saldo em peso:** hoje a etiqueta é usada inteira ou
@@ -240,8 +270,14 @@ outros apps estáticos deste repositório.
 |---|---|
 | `core.js` | Regras, sem tela: validade, situação, baixas, recebimento, contagem de estoque, saldo, relatório, planilha, código de barras (Code 128), a lógica do leitor passo a passo, a cartela e os dados de exemplo. Roda também no Node. |
 | `app.js` | Telas e eventos. |
+| `nuvem.js` | A conversa com o Supabase: login da casa, renovação da sessão e a rodada de sincronização. |
+| `nuvem-config.js` | Endereço e chave pública do projeto da casa (vazio: sem nuvem). |
+| `supabase/instalar.sql` | O banco da nuvem: tabelas, regras de acesso e as três funções. |
 | `styles.css` | Visual (tema claro e escuro), a etiqueta e a cartela, na tela e no papel. |
 | `sw.js`, `manifest.webmanifest`, `icones/` | Instalação e uso sem internet. |
+
+As regras de o que enviar e como juntar o que chega da nuvem também ficam em
+`core.js` (seção "nuvem"), para poderem ser testadas sem navegador nem rede.
 
 Os dados ficam no `localStorage` do aparelho, na chave `validade_em_dia_v1`:
 ajustes, catálogo, etiquetas, recebimentos e contagens. Cada etiqueta guarda
@@ -253,13 +289,15 @@ quando, por quem e por quê.
 ## Testes
 
 ```bash
-node teste-nucleo.js                 # regras, código de barras, leitor, recebimento e contagem (36 testes, sem navegador)
-node teste-interface.js              # telas no Chromium, com a data fixa (30 testes)
+node teste-nucleo.js                 # regras, código de barras, leitor, recebimento, contagem e sincronização (41 testes, sem navegador)
+node teste-nuvem.js                  # ligação com a nuvem contra um Supabase de mentira (10 testes)
+bash teste-banco.sh                  # o banco da nuvem num PostgreSQL temporário (precisa do PostgreSQL instalado)
+node teste-interface.js              # telas no Chromium, com a data fixa (36 testes, cinco deles com vários aparelhos)
 node teste-interface.js --capturas   # o mesmo, regravando as imagens de capturas/
 ```
 
-O teste do núcleo roda na publicação: se uma regra quebrar, o site não é
-atualizado. As barras são conferidas contra uma biblioteca de referência
+Os testes do núcleo e da nuvem rodam na publicação: se uma regra quebrar, o
+site não é atualizado. As barras são conferidas contra uma biblioteca de referência
 (JsBarcode); as etiquetas e a cartela, desenhadas na resolução da impressora,
 foram lidas de volta por um decodificador (ZXing). Falta a prova no papel, com
 a Zebra e o leitor da casa.

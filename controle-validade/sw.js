@@ -6,7 +6,7 @@
  * atualização publicada aparece na abertura seguinte do app.
  * Mude VERSION a cada atualização para descartar o cache antigo.
  */
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 const CACHE = 'validade-' + VERSION;
 
 const APP_SHELL = [
@@ -14,6 +14,8 @@ const APP_SHELL = [
   './index.html',
   './styles.css',
   './core.js',
+  './nuvem-config.js',
+  './nuvem.js',
   './app.js',
   './manifest.webmanifest',
   './icones/icone-192.png',

@@ -11,7 +11,7 @@
   const N = window.Nucleo;
   // Ligado só na prévia publicada como página: lá o navegador não deixa imprimir nem baixar arquivo.
   const PREVIA = !!window.MODO_PREVIA;
-  const VERSAO = '0.3';
+  const VERSAO = '0.4';
   const ABAS = ['validades', 'leitor', 'etiquetar', 'produtos', 'estoque', 'perdas', 'ajustes'];
 
   const $ = (s, el) => (el || document).querySelector(s);
@@ -42,7 +42,45 @@
 
   // ---------- guardar ----------
   function lerGuardado() { try { return localStorage.getItem(N.CHAVE); } catch (e) { return null; } }
-  function gravar() { try { localStorage.setItem(N.CHAVE, JSON.stringify(D)); } catch (e) { /* sem espaço ou sem permissão: segue só na memória */ } }
+  // Com a nuvem ligada, o retrato é o que este aparelho acredita que o servidor tem (ver core.js).
+  let retrato = null;
+  let semEspaco = false;
+  function persistir() {
+    // Na primeira subida a fila é uma cópia de tudo: não vai para o aparelho. Se o app fechar no meio, a subida recomeça.
+    const guardado = D.nuvem && D.nuvem.inicial ? Object.assign({}, D, { nuvem: Object.assign({}, D.nuvem, { fila: [] }) }) : D;
+    try {
+      localStorage.setItem(N.CHAVE, JSON.stringify(guardado));
+      semEspaco = false;
+    } catch (e) {
+      if (!semEspaco) avisar('Não foi possível guardar neste aparelho (sem espaço ou sem permissão). Faça uma cópia de segurança nos Ajustes.');
+      semEspaco = true;
+    }
+  }
+  // Chamada depois de cada mudança: anota o que mudou para a nuvem, guarda no aparelho e pede uma sincronização.
+  function gravar() {
+    if (parada) return;
+    if (D.nuvem && retrato) N.nuvemAnotar(D, retrato);
+    persistir();
+    if (D.nuvem) agendarSincronia(1500);
+  }
+
+  /*
+   * Uma aba só. Duas abas do app no mesmo aparelho escreveriam uma por cima da outra e, com a nuvem,
+   * usariam a mesma faixa de números. A aba aberta por último fica valendo; a anterior para de guardar
+   * e de sincronizar, e oferece "Continuar aqui" (que recarrega com os dados mais novos e para a outra).
+   */
+  let parada = false;
+  const canalDeAbas = !PREVIA && 'BroadcastChannel' in window ? new BroadcastChannel('validade-em-dia') : null;
+  if (canalDeAbas) {
+    canalDeAbas.onmessage = (ev) => {
+      if (ev.data !== 'abri' || parada) return;
+      parada = true;
+      abrir('<h2 id="dlg-titulo">O app foi aberto em outra aba</h2>' +
+        '<p>Para não misturar os dados, só uma aba trabalha de cada vez neste aparelho. Feche esta aba, ou continue aqui (a outra para).</p>' +
+        '<div class="dlg-pe"><button type="submit" class="bt bt-prim" id="continuar-aqui">Continuar aqui</button></div>',
+        () => { location.reload(); return false; });
+    };
+  }
 
   // ---------- ícones ----------
   const ICO = {
@@ -362,7 +400,8 @@
     return 'Vence <strong>' + N.diaSemana(b.venceEm) + ' ' + N.fmtData(b.venceEm) + (b.porHora ? ' às ' + N.fmtHora(b.venceEm) : '') + '</strong> · ' +
       modo.nome + ', ' + N.fmtValidade(p.validades[modo.id]) + (b.limitada ? ' (encurtada pela validade do fabricante)' : '');
   }
-  const previaLeitor = (m) => (m.erro ? '<div class="vazio">' + esc(m.erro) + '</div>' : etiquetaHtml(Object.assign({ cod: D.seq + 1 }, m.base)));
+  const proximaEtiqueta = () => N.espiar(D, 'etiqueta')[0] || 0;
+  const previaLeitor = (m) => (m.erro ? '<div class="vazio">' + esc(m.erro) + '</div>' : etiquetaHtml(Object.assign({ cod: proximaEtiqueta() }, m.base)));
 
   function leitorNova(p) {
     const S = UI.S;
@@ -647,13 +686,15 @@
       $('#previa-nota').textContent = '';
       return;
     }
-    $('#previa').innerHTML = etiquetaHtml(Object.assign({ cod: D.seq + 1 }, m.base));
+    $('#previa').innerHTML = etiquetaHtml(Object.assign({ cod: proximaEtiqueta() }, m.base));
+    const numeros = N.espiar(D, 'etiqueta', n);
+    const seguidos = numeros.length === n && numeros[n - 1] - numeros[0] === n - 1;
     const prod = D.produtos.find((x) => x.id === UI.r.produtoId);
     const modo = N.MODO[m.base.modo];
     $('#previa-nota').textContent = 'Validade de ' + N.fmtValidade(prod.validades[modo.id]) + ' em ' + modo.nome.toLowerCase() + ' (' + modo.faixa + ').' +
       (m.base.limitada ? ' Encurtada pela validade do fabricante.' : '') +
       (D.config.contarDiaPreparo && !m.base.porHora && !m.base.limitada ? ' O dia do preparo conta como 1º dia.' : '') +
-      (n > 1 ? ' As ' + n + ' etiquetas saem numeradas de ' + N.fmtCodigo(D.seq + 1) + ' a ' + N.fmtCodigo(D.seq + n) + '.' : '');
+      (n > 1 ? ' As ' + n + ' etiquetas saem numeradas ' + (seguidos ? 'de ' + N.fmtCodigo(numeros[0]) + ' a ' + N.fmtCodigo(numeros[n - 1]) : 'a partir de ' + N.fmtCodigo(numeros[0])) + '.' : '');
   }
 
   function emitirEtiquetas() {
@@ -763,8 +804,10 @@
     const cont = N.contagemAberta(D);
     const S = N.saldo(D, agora());
     const total = S.reduce((t, x) => t + x.n, 0);
-    const recs = D.recebimentos.filter((r) => r.fechadoEm).reverse();
-    const conts = D.contagens.filter((c) => c.fechadaEm).reverse();
+    // No histórico: o que já foi encerrado e, com a nuvem, o que outro aparelho ainda tem em aberto.
+    const recs = D.recebimentos.filter((r) => r !== rec).reverse();
+    const conts = D.contagens.filter((c) => c !== cont).reverse();
+    const emOutro = '<span class="pill p-breve">' + ICO.breve + 'em aberto em outro aparelho</span>';
     const continuar = '<button type="button" class="bt" data-aba="leitor">Continuar no Leitor</button>';
     let andamento = '';
     if (cont) {
@@ -776,7 +819,7 @@
     const itemRecebimento = (r) => {
       const resumo = N.resumoRecebimento(D, r);
       return '<li class="item"><div class="item-info">' +
-        '<div class="item-nome"><span>Nº ' + r.n + ' · ' + esc(r.fornecedor) + '</span></div>' +
+        '<div class="item-nome"><span>Nº ' + r.n + ' · ' + esc(r.fornecedor) + '</span>' + (r.fechadoEm ? '' : emOutro) + '</div>' +
         '<div class="item-meta">' + esc([quandoFoi(r.abertoEm), r.nota && 'NF ' + r.nota, r.responsavel, plural(resumo.etiquetas, 'etiqueta', 'etiquetas')].filter(Boolean).join(' · ')) + '</div>' +
         '<div class="item-datas">' + esc(resumo.itens.map((i) => i.nome + ' ×' + i.n).join(', ')) + '</div>' +
         (r.obs ? '<div class="item-datas">Obs.: ' + esc(r.obs) + '</div>' : '') +
@@ -786,7 +829,9 @@
       const faltam = c.faltando.length;
       return '<li class="item"><div class="item-info">' +
         '<div class="item-nome"><span>Nº ' + c.n + ' · ' + esc(N.escopoTexto(c)) + '</span>' +
-        '<span class="pill p-' + (faltam ? 'vencido' : 'ok') + '">' + ICO[faltam ? 'vencido' : 'ok'] + c.conferidas + ' de ' + c.esperadas + ' conferidas</span></div>' +
+        (c.fechadaEm
+          ? '<span class="pill p-' + (faltam ? 'vencido' : 'ok') + '">' + ICO[faltam ? 'vencido' : 'ok'] + c.conferidas + ' de ' + c.esperadas + ' conferidas</span>'
+          : emOutro) + '</div>' +
         '<div class="item-meta">' + esc([quandoFoi(c.abertaEm), c.responsavel].filter(Boolean).join(' · ')) + '</div>' +
         (faltam ? '<div class="item-datas">' + plural(faltam, 'não encontrada', 'não encontradas') + ': ' + esc(origensTexto(c.faltando)) + '. ' +
           (c.baixou ? (faltam === 1 ? 'Recebeu baixa.' : 'Receberam baixa.') : (faltam === 1 ? 'Ficou como estava.' : 'Ficaram como estavam.')) + '</div>' : '') +
@@ -1004,14 +1049,18 @@
       '<label class="campo">Equipe, um nome por linha<textarea id="cfg-equipe" rows="5">' + esc(c.equipe.join('\n')) + '</textarea></label>' +
       '</section>' +
 
+      cartaoNuvem() +
+
       '<section class="cartao"><h2>Dados</h2>' +
-      '<p class="dica">Neste esboço tudo fica guardado só neste aparelho. ' +
-      (PREVIA ? 'Na prévia, a impressão e os arquivos (planilha e cópia de segurança) ficam desligados.' : 'Faça uma cópia de segurança antes de trocar de aparelho ou limpar o navegador.') + '</p>' +
+      '<p class="dica">' + (D.nuvem
+        ? 'Os dados ficam neste aparelho e na nuvem da casa. Restaurar uma cópia, carregar o exemplo ou apagar tudo mudaria os dados de todos os aparelhos: para isso, desligue antes este aparelho da nuvem.'
+        : 'Sem a nuvem ligada, tudo fica guardado só neste aparelho. ' +
+          (PREVIA ? 'Na prévia, a impressão e os arquivos (planilha e cópia de segurança) ficam desligados.' : 'Faça uma cópia de segurança antes de trocar de aparelho ou limpar o navegador.')) + '</p>' +
       '<div class="barra">' +
-      (PREVIA ? '' : '<button type="button" class="bt" data-acao="backup">Baixar cópia de segurança</button>' +
-        '<button type="button" class="bt" data-acao="restaurar">Restaurar cópia</button><input type="file" id="arq" accept="application/json,.json" hidden>') +
-      '<button type="button" class="bt" data-acao="exemplos">Carregar dados de exemplo</button>' +
-      '<button type="button" class="bt bt-perigo" data-acao="apagar">Apagar tudo</button></div>' +
+      (PREVIA ? '' : '<button type="button" class="bt" data-acao="backup">Baixar cópia de segurança</button>') +
+      (D.nuvem ? '' : (PREVIA ? '' : '<button type="button" class="bt" data-acao="restaurar">Restaurar cópia</button><input type="file" id="arq" accept="application/json,.json" hidden>') +
+        '<button type="button" class="bt" data-acao="exemplos">Carregar dados de exemplo</button>' +
+        '<button type="button" class="bt bt-perigo" data-acao="apagar">Apagar tudo</button>') + '</div>' +
       '</section>' +
       '<p class="dica">Validade em Dia · esboço ' + VERSAO + '</p>';
   }
@@ -1063,7 +1112,9 @@
     leitor.readAsText(arq);
   }
 
+  // Troca todos os dados do aparelho. Só sem a nuvem ligada: com ela, seria apagar os dados da casa inteira.
   function trocarDados(novo) {
+    if (D.nuvem) { avisar('Com a nuvem ligada, isso mudaria os dados de todos os aparelhos da casa. Desligue antes este aparelho da nuvem.'); return; }
     D = novo;
     UI.r = rascunho();
     UI.S = N.sessao();
@@ -1091,11 +1142,11 @@
       avisar((p ? p.nome : 'Produto') + ' excluído. As etiquetas já emitidas continuam no histórico.');
     },
     exportar: () => baixar('validade-em-dia-' + N.dataIso(agora()) + '.csv', '﻿' + N.csv(D, agora()), 'text/csv;charset=utf-8'),
-    backup: () => baixar('validade-em-dia-' + N.dataIso(agora()) + '.json', JSON.stringify(D), 'application/json'),
+    backup: () => baixar('validade-em-dia-' + N.dataIso(agora()) + '.json', JSON.stringify(N.paraBackup(D)), 'application/json'),
     restaurar: () => $('#arq').click(),
-    exemplos: () => confirmar('Carregar os dados de exemplo?', 'O catálogo, as etiquetas e os ajustes deste aparelho serão substituídos pelo exemplo.',
+    exemplos: () => !D.nuvem && confirmar('Carregar os dados de exemplo?', 'O catálogo, as etiquetas e os ajustes deste aparelho serão substituídos pelo exemplo.',
       'Carregar exemplo', () => { trocarDados(N.exemplo(agora())); avisar('Dados de exemplo carregados.'); }),
-    apagar: () => confirmar('Apagar tudo?', 'Produtos, etiquetas, histórico e ajustes deste aparelho serão apagados. Não dá para desfazer.',
+    apagar: () => !D.nuvem && confirmar('Apagar tudo?', 'Produtos, etiquetas, histórico e ajustes deste aparelho serão apagados. Não dá para desfazer.',
       'Apagar tudo', () => { trocarDados(N.vazio()); avisar('Tudo apagado. Comece cadastrando os produtos.'); }, true),
     zerar: () => abrir(
       '<h2 id="dlg-titulo">Começar do zero</h2>' +
@@ -1119,6 +1170,13 @@
         responsavel: '', local: 'Leia este código na aba Leitor', qtd: '', loteOrigem: '', origens: [],
       }]);
     },
+
+    // Nuvem
+    'nuvem-sincronizar': () => { sinc.situacao = 'sincronizando'; marcar('sincronizando'); sincronizar(); },
+    'nuvem-desligar': desligarNuvem,
+    'nuvem-trocar-config': () => { guardarJson(CHAVE_NUVEM, null); criarCliente(); render(); },
+    'nuvem-cancelar': () => { if (cliente) cliente.sair().catch(() => {}); fecharJanela(); },
+    'abrir-nuvem': () => { ir('ajustes'); const c = $('#cartao-nuvem'); if (c) c.scrollIntoView({ block: 'start' }); },
 
     // Recebimento e contagem de estoque
     'comecar-recebimento': dialogoComecarRecebimento,
@@ -1162,6 +1220,277 @@
     },
   };
 
+  // ---------- nuvem ----------
+  /*
+   * Liga o aparelho à nuvem da casa (Supabase). nuvem.js fala com o servidor e core.js decide o que
+   * enviar e como juntar o que chega; aqui ficam o cartão dos Ajustes, o aviso de situação no topo
+   * e os gatilhos: depois de cada mudança, a cada 20 segundos, ao voltar a conexão e ao voltar ao app.
+   */
+  const NuvemLib = window.Nuvem;
+  const CHAVE_SESSAO = 'validade_em_dia_sessao';
+  const CHAVE_NUVEM = 'validade_em_dia_nuvem';
+  const lerJson = (chave) => { try { return JSON.parse(localStorage.getItem(chave) || 'null'); } catch (e) { return null; } };
+  const guardarJson = (chave, v) => { try { if (v == null) localStorage.removeItem(chave); else localStorage.setItem(chave, JSON.stringify(v)); } catch (e) { /* segue sem guardar */ } };
+
+  // Endereço e chave do projeto: os do arquivo nuvem-config.js valem para todos os aparelhos; sem eles, os digitados neste.
+  function configNuvem() {
+    const doArquivo = window.NUVEM || {};
+    if (doArquivo.url && doArquivo.chave) return { url: doArquivo.url, chave: doArquivo.chave, fixa: true };
+    const daqui = lerJson(CHAVE_NUVEM) || {};
+    return daqui.url && daqui.chave ? { url: daqui.url, chave: daqui.chave, fixa: false } : null;
+  }
+
+  let cliente = null;
+  function criarCliente() {
+    const c = !PREVIA && NuvemLib ? configNuvem() : null;
+    cliente = c
+      ? NuvemLib.criar({ url: c.url, chave: c.chave, buscar: (u, o) => fetch(u, o), ler: () => lerJson(CHAVE_SESSAO), gravar: (x) => guardarJson(CHAVE_SESSAO, x), agora })
+      : null;
+  }
+
+  // situacao: '' (desligada) | 'sincronizando' | 'em-dia' | 'sem-conexao' | 'entrar' (sessão terminou) | 'erro'
+  const sinc = { situacao: '', msg: '', ultima: 0, redesenhar: false };
+  const estadoNuvem = { get D() { return D; }, get retrato() { return retrato; }, guardar: () => persistir() };
+
+  function marcar(situacao, msg) {
+    sinc.situacao = situacao;
+    sinc.msg = msg || '';
+    selo();
+    const cartao = $('#cartao-nuvem');
+    const el = document.activeElement;
+    if (cartao && !(el && cartao.contains(el) && /^(INPUT|TEXTAREA)$/.test(el.tagName))) cartao.outerHTML = cartaoNuvem();
+  }
+
+  // O aviso no topo: some com a nuvem desligada; tocar nele leva aos Ajustes.
+  function selo() {
+    const b = $('#selo-nuvem');
+    if (!b) return;
+    if (!D.nuvem) { b.hidden = true; return; }
+    const porEnviar = D.nuvem.fila.length;
+    const pendente = porEnviar ? ' · ' + porEnviar + ' por enviar' : '';
+    const TEXTO = {
+      'em-dia': ICO.ok + 'Nuvem em dia',
+      sincronizando: 'Sincronizando…',
+      'sem-conexao': ICO.hoje + 'Sem conexão' + pendente,
+      entrar: ICO.vencido + 'Nuvem: entrar de novo',
+      erro: ICO.vencido + 'Nuvem com erro' + pendente,
+    };
+    b.innerHTML = TEXTO[sinc.situacao] || 'Nuvem';
+    b.hidden = false;
+  }
+
+  let rodando = false;
+  let deNovo = false;
+  let relogioSinc = 0;
+  function agendarSincronia(ms) {
+    clearTimeout(relogioSinc);
+    relogioSinc = setTimeout(sincronizar, ms);
+  }
+
+  async function sincronizar() {
+    if (!D.nuvem || parada) return;
+    if (!cliente) { marcar('erro', 'Falta o endereço e a chave do projeto na nuvem.'); return; }
+    if (!cliente.usuario()) { marcar('entrar', NuvemLib.MENSAGEM.sessao); return; }
+    if (rodando) { deNovo = true; return; }
+    rodando = true;
+    deNovo = false;
+    if (sinc.situacao !== 'em-dia') marcar('sincronizando');
+    try {
+      const r = await NuvemLib.rodada(N, estadoNuvem, cliente);
+      if (r && D.nuvem) {
+        if (D.nuvem.inicial && !D.nuvem.fila.length) { D.nuvem.inicial = false; persistir(); }
+        sinc.ultima = agora();
+        marcar('em-dia');
+        if (r.mudou) redesenhar();
+      }
+    } catch (e) {
+      if (!D.nuvem) return;
+      if (e && e.tipo === 'rede') marcar('sem-conexao');
+      else if (e && e.tipo === 'sessao') marcar('entrar', e.message);
+      else marcar('erro', (e && (e.tipo === 'servidor' ? e.original : e.message)) || 'Erro inesperado.');
+    } finally {
+      rodando = false;
+      if (deNovo && D.nuvem) agendarSincronia(300);
+    }
+  }
+
+  // Chegou novidade de outro aparelho: redesenha, a não ser que alguém esteja no meio de uma digitação ou janela.
+  function redesenhar() {
+    const el = document.activeElement;
+    const digitando = el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) && !(el.id === 'leitor-campo' && !el.value);
+    if (dlg.open || digitando) { sinc.redesenhar = true; return; }
+    sinc.redesenhar = false;
+    render();
+  }
+
+  function codigoAparelho() {
+    const LETRAS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const sorteio = new Uint8Array(4);
+    window.crypto.getRandomValues(sorteio);
+    return Array.from(sorteio, (x) => LETRAS[x % LETRAS.length]).join('');
+  }
+
+  function cartaoNuvem() {
+    if (PREVIA || !NuvemLib) return '';
+    const cfg = configNuvem();
+    const intro = '<p class="dica">Com a nuvem ligada, todos os aparelhos da casa veem o mesmo painel, e nada se perde se um deles quebrar. Sem internet o aparelho continua funcionando e envia tudo quando a conexão volta.</p>';
+    const erro = '<p class="erro" id="nv-erro" role="alert" hidden></p>';
+    let corpo;
+    if (!cfg) {
+      corpo = intro +
+        '<p class="dica">Primeiro é preciso criar o projeto da casa no Supabase: o passo a passo está no arquivo LIGAR-NUVEM.md. Depois cole aqui o endereço e a chave pública do projeto.</p>' +
+        '<form id="form-nuvem" data-etapa="config" class="campos" novalidate>' +
+        '<label class="campo">Endereço do projeto<input type="text" id="nv-url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://xxxxxxxx.supabase.co"></label>' +
+        '<label class="campo">Chave pública (publishable ou anon)<input type="text" id="nv-chave" autocomplete="off" spellcheck="false"></label>' +
+        '</form>' + erro +
+        '<div class="barra"><button type="submit" form="form-nuvem" class="bt bt-prim">Guardar endereço e chave</button></div>';
+    } else if (!D.nuvem) {
+      corpo = intro +
+        '<form id="form-nuvem" data-etapa="ligar" class="campos" novalidate>' +
+        '<label class="campo">E-mail da conta da casa<input type="email" id="nv-email" autocomplete="username" spellcheck="false"></label>' +
+        '<label class="campo">Senha<input type="password" id="nv-senha" autocomplete="current-password"></label>' +
+        '</form>' + erro +
+        '<div class="barra"><button type="submit" form="form-nuvem" class="bt bt-prim" id="nv-ligar">Ligar este aparelho à nuvem</button>' +
+        (cfg.fixa ? '' : '<button type="button" class="bt" data-acao="nuvem-trocar-config">Trocar endereço e chave</button>') + '</div>';
+    } else if (sinc.situacao === 'entrar' || !cliente || !cliente.usuario()) {
+      corpo = '<p><strong>A sessão na nuvem terminou.</strong> O que foi feito neste aparelho está guardado e será enviado assim que você entrar de novo' +
+        (D.nuvem.fila.length ? ' (' + plural(D.nuvem.fila.length, 'mudança', 'mudanças') + ' na fila)' : '') + '.</p>' +
+        '<form id="form-nuvem" data-etapa="entrar" class="campos" novalidate>' +
+        '<label class="campo">Conta da casa<input type="email" id="nv-email" autocomplete="username" value="' + esc(D.nuvem.email) + '" readonly></label>' +
+        '<label class="campo">Senha<input type="password" id="nv-senha" autocomplete="current-password"></label>' +
+        '</form>' + erro +
+        '<div class="barra"><button type="submit" form="form-nuvem" class="bt bt-prim" id="nv-ligar">Entrar de novo</button>' +
+        '<button type="button" class="bt" data-acao="nuvem-desligar">Desligar este aparelho da nuvem</button></div>';
+    } else {
+      const fila = D.nuvem.fila.length;
+      const SITUACAO = {
+        'em-dia': 'Em dia. Última sincronização às ' + N.fmtHora(sinc.ultima) + '.',
+        sincronizando: 'Sincronizando…',
+        'sem-conexao': 'Sem conexão com a nuvem. O aparelho continua funcionando e envia tudo quando a conexão voltar.',
+        erro: 'A nuvem recusou a sincronização: ' + sinc.msg,
+      };
+      corpo = '<p>Ligado como <strong>' + esc(D.nuvem.email) + '</strong> · aparelho <span class="mono">' + esc(D.aparelho) + '</span></p>' +
+        '<p id="nv-situacao">' + esc(SITUACAO[sinc.situacao] || 'Ligado.') + (fila ? ' ' + plural(fila, 'mudança', 'mudanças') + ' por enviar.' : '') + '</p>' +
+        '<div class="barra"><button type="button" class="bt bt-prim" data-acao="nuvem-sincronizar">Sincronizar agora</button>' +
+        '<button type="button" class="bt" data-acao="nuvem-desligar">Desligar este aparelho da nuvem</button></div>';
+    }
+    return '<section class="cartao" id="cartao-nuvem"><h2>Nuvem</h2>' + corpo + '</section>';
+  }
+
+  function erroNuvem(msg) {
+    const p = $('#nv-erro');
+    if (!p) { avisar(msg); return; }
+    p.textContent = msg;
+    p.hidden = !msg;
+  }
+  const textoDoErro = (e) => (e && e.tipo ? (e.tipo === 'servidor' ? e.original : e.message) : 'Não deu certo. Tente de novo.');
+
+  function guardarConfigNuvem() {
+    const url = $('#nv-url').value.trim().replace(/\/+$/, '');
+    const chave = $('#nv-chave').value.trim();
+    if (!/^https?:\/\/[^\s/]+/.test(url)) { erroNuvem('O endereço do projeto começa com https:// (está em Project Settings → API, no Supabase).'); return; }
+    if (chave.length < 20) { erroNuvem('Cole a chave pública inteira (a "publishable", ou a "anon"). Nunca a chave secreta.'); return; }
+    guardarJson(CHAVE_NUVEM, { url, chave });
+    criarCliente();
+    render();
+  }
+
+  // Passo 1 de ligar: confere a conta e vê se a casa já tem dados na nuvem. Nada muda antes da confirmação.
+  async function ligarNuvem() {
+    const email = $('#nv-email').value.trim();
+    const senha = $('#nv-senha').value;
+    if (!email || !senha) { erroNuvem('Informe o e-mail e a senha da conta da casa.'); return; }
+    const botao = $('#nv-ligar');
+    botao.disabled = true;
+    erroNuvem('');
+    try {
+      const usuario = await cliente.entrar(email, senha);
+      const r = await cliente.receber(null, 1);
+      proporLigacao(usuario, !!(r && Array.isArray(r.linhas) && r.linhas.length));
+    } catch (e) {
+      await cliente.sair().catch(() => {});
+      erroNuvem(textoDoErro(e));
+    } finally {
+      if (botao.isConnected) botao.disabled = false;
+    }
+  }
+
+  function proporLigacao(usuario, haNaNuvem) {
+    const meus = !D.exemplo && D.produtos.length + D.etiquetas.length + D.recebimentos.length + D.contagens.length > 0;
+    const quanto = plural(D.produtos.length, 'produto', 'produtos') + ' e ' + plural(D.etiquetas.length, 'etiqueta', 'etiquetas');
+    const subir = meus && !haNaNuvem;
+    let txt;
+    if (subir) txt = 'A nuvem da casa ainda está vazia. Os dados deste aparelho (' + quanto + ') serão enviados para ela e passam a ser os dados da casa.';
+    else if (meus) txt = 'A casa já tem dados na nuvem. Os dados deste aparelho (' + quanto + ') serão substituídos pelos da nuvem. Para guardá-los, cancele e baixe antes uma cópia de segurança.';
+    else txt = (D.exemplo ? 'Os dados de exemplo deste aparelho saem de cena. ' : '') +
+      (haNaNuvem ? 'Entram os dados que a casa já tem na nuvem.' : 'A nuvem da casa ainda está vazia: cadastre os produtos, e eles aparecem em todos os aparelhos ligados.');
+    abrir(
+      '<h2 id="dlg-titulo">Ligar este aparelho à nuvem</h2>' +
+      '<p>Conta da casa: <strong>' + esc(usuario.email) + '</strong></p><p id="nv-proposta">' + esc(txt) + '</p>' +
+      '<div class="dlg-pe"><button type="button" class="bt" data-acao="nuvem-cancelar">Cancelar</button><button type="submit" class="bt bt-prim">Ligar</button></div>',
+      () => {
+        if (!subir) {
+          const novo = N.vazio();
+          Object.assign(novo.config, { tamanho: D.config.tamanho, letra: D.config.letra, som: D.config.som });
+          novo.aparelho = D.aparelho;
+          D = novo;
+          UI.r = rascunho();
+          UI.S = N.sessao();
+          UI.retorno = null;
+          UI.log = [];
+          UI.sit = UI.local = UI.tipo = UI.busca = UI.grupo = UI.tipoEtq = UI.etqBusca = UI.prodBusca = '';
+        }
+        N.nuvemLigar(D, { casa: usuario.id, email: usuario.email, aparelho: D.aparelho || codigoAparelho(), inicial: subir });
+        retrato = subir ? N.retratoVazio() : N.nuvemRetrato(D);
+        sinc.situacao = 'sincronizando';
+        persistir();
+        render();
+        avisar('Aparelho ligado à nuvem.');
+        sincronizar();
+      });
+  }
+
+  // A sessão terminou e a pessoa entra de novo: tem de ser a mesma conta, senão a fila iria para outra casa.
+  async function entrarDeNovo() {
+    const senha = $('#nv-senha').value;
+    if (!senha) { erroNuvem('Informe a senha da conta da casa.'); return; }
+    const botao = $('#nv-ligar');
+    botao.disabled = true;
+    erroNuvem('');
+    try {
+      const usuario = await cliente.entrar(D.nuvem.email, senha);
+      if (usuario.id !== D.nuvem.casa) {
+        await cliente.sair().catch(() => {});
+        erroNuvem('Essa conta é de outra casa. Este aparelho está ligado a ' + D.nuvem.email + '.');
+        return;
+      }
+      sinc.situacao = 'sincronizando';
+      render();
+      sincronizar();
+    } catch (e) {
+      erroNuvem(textoDoErro(e));
+    } finally {
+      if (botao.isConnected) botao.disabled = false;
+    }
+  }
+
+  function desligarNuvem() {
+    const fila = D.nuvem.fila.length;
+    confirmar('Desligar este aparelho da nuvem?',
+      'Os dados continuam neste aparelho, mas ele deixa de enviar e de receber o que os outros fazem.' +
+      (fila ? ' Há ' + plural(fila, 'mudança que ainda não foi enviada e ficará', 'mudanças que ainda não foram enviadas e ficarão') + ' só aqui.' : ''),
+      'Desligar', () => {
+        N.nuvemDesligar(D);
+        retrato = null;
+        sinc.situacao = '';
+        clearTimeout(relogioSinc);
+        if (cliente) cliente.sair().catch(() => {});
+        persistir();
+        render();
+        avisar('Aparelho desligado da nuvem. Os dados continuam aqui.');
+      }, true);
+  }
+
   // ---------- janela, aviso e navegação ----------
   let aoEnviar = null;
   function abrir(html, fn, larga) {
@@ -1187,6 +1516,7 @@
     if (UI.aba === 'leitor') focoLeitor();
   }
   dlg.addEventListener('close', () => { if (UI.aba === 'leitor') focoLeitor(); });   // fechada com Esc
+  dlg.addEventListener('cancel', (ev) => { if (parada) ev.preventDefault(); });        // a aba parada não fecha o aviso com Esc
 
   function confirmar(titulo, txt, rotulo, fn, perigo, rotuloVoltar) {
     abrir('<h2 id="dlg-titulo">' + esc(titulo) + '</h2><p>' + esc(txt) + '</p>' +
@@ -1207,6 +1537,7 @@
     const t = agora();
     $('#hoje').textContent = (D.config.casa ? D.config.casa + ' · ' : '') + N.diaSemana(t) + ', ' + N.fmtData(t);
     document.documentElement.dataset.letra = D.config.letra;
+    selo();
   }
 
   const TELAS = { validades: telaValidades, leitor: telaLeitor, etiquetar: telaEtiquetar, produtos: telaProdutos, estoque: telaEstoque, perdas: telaPerdas, ajustes: telaAjustes };
@@ -1291,6 +1622,13 @@
 
   document.addEventListener('submit', (ev) => {
     if (ev.target.id === 'form-etq') { ev.preventDefault(); emitirEtiquetas(); }
+    else if (ev.target.id === 'form-nuvem') {
+      ev.preventDefault();
+      const etapa = ev.target.dataset.etapa;
+      if (etapa === 'config') guardarConfigNuvem();
+      else if (etapa === 'ligar') ligarNuvem();
+      else entrarDeNovo();
+    }
     else if (ev.target.id === 'form-leitor') {
       ev.preventDefault();
       const campo = $('#leitor-campo');
@@ -1355,10 +1693,15 @@
     cabecalho();
     const el = document.activeElement;
     const digitando = el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName);
-    if (UI.aba === 'validades' && !digitando) render();
+    if ((UI.aba === 'validades' || sinc.redesenhar) && !digitando) { sinc.redesenhar = false; render(); }
   }
   setInterval(acompanharRelogio, 30000);
   document.addEventListener('visibilitychange', acompanharRelogio);
+
+  // Nuvem: além de sincronizar depois de cada mudança, confere de tempos em tempos o que os outros fizeram.
+  setInterval(() => { if (D.nuvem && !document.hidden) sincronizar(); }, 20000);
+  window.addEventListener('online', () => { if (D.nuvem) sincronizar(); });
+  document.addEventListener('visibilitychange', () => { if (D.nuvem && !document.hidden) sincronizar(); });
 
   // ---------- início ----------
   // O exemplo da primeira versão (sem códigos nem tipos) é trocado pelo novo; dados de verdade são só atualizados.
@@ -1371,9 +1714,17 @@
     return d.exemplo && versao < N.VERSAO ? N.exemplo(agora()) : d;
   }
   D = abrirGuardado();
+  criarCliente();
+  if (D.nuvem) {
+    // O que estava guardado já tinha sido anotado; na primeira subida, tudo ainda está por enviar.
+    retrato = D.nuvem.inicial ? N.retratoVazio() : N.nuvemRetrato(D);
+    sinc.situacao = 'sincronizando';
+  }
   const inicial = location.hash.slice(1);
   if (ABAS.indexOf(inicial) >= 0) UI.aba = inicial;
   render();
+  if (canalDeAbas) canalDeAbas.postMessage('abri');
+  if (D.nuvem) sincronizar();
 
   if (!PREVIA && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });

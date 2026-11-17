@@ -142,6 +142,16 @@ button { cursor: pointer; }
 .topo h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -.01em; min-width: 0; overflow-wrap: anywhere; }
 .topo p { font-size: .875rem; color: var(--topo-texto-2); }
 
+/* Situação da nuvem, no topo: tocar leva aos Ajustes. */
+.selo {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 30px; padding: 3px 12px 3px 8px;
+  border: 1px solid var(--topo-texto-2); border-radius: 999px;
+  background: none; color: var(--topo-texto); font-size: .82rem; font-weight: 600; white-space: nowrap;
+}
+.selo .ico { width: 16px; height: 16px; }
+.selo:focus-visible { outline-color: var(--topo-texto); }
+
 .abas { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--topo); }
 .abas-dentro { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
 .abas-dentro::-webkit-scrollbar { display: none; }

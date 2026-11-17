@@ -306,7 +306,7 @@
     if (!n || typeof n !== 'object' || !texto(n.casa, 60)) return null;
     const r = n.reservas || {};
     return {
-      casa: texto(n.casa, 60), email: texto(n.email, 80), cursor: texto(n.cursor, 40),
+      casa: texto(n.casa, 60), email: texto(n.email, 80), cursor: texto(n.cursor, 40), inicial: !!n.inicial,
       fila: (Array.isArray(n.fila) ? n.fila : []).filter((m) => m && REGISTROS[m.tipo] && m.id != null && m.campos && typeof m.campos === 'object')
         .map((m) => (m.apagado == null ? { tipo: m.tipo, id: String(m.id), campos: m.campos } : { tipo: m.tipo, id: String(m.id), campos: m.campos, apagado: !!m.apagado })),
       reservas: { etiqueta: limparFaixas(r.etiqueta), produto: limparFaixas(r.produto), recebimento: limparFaixas(r.recebimento), contagem: limparFaixas(r.contagem) },
@@ -726,9 +726,10 @@
   const configComum = (D) => { const c = {}; CONFIG_COMUM.forEach((k) => { c[k] = D.config[k]; }); return c; };
 
   // Liga este aparelho à nuvem da casa. O que estiver em aberto passa a ser deste aparelho.
+  // inicial: os dados que já estão aqui ainda precisam subir inteiros (a casa está chegando à nuvem por este aparelho).
   function nuvemLigar(D, o) {
     D.aparelho = texto(o.aparelho, 12);
-    D.nuvem = { casa: texto(o.casa, 60), email: texto(o.email, 80), cursor: '', fila: [], reservas: { etiqueta: [], produto: [], recebimento: [], contagem: [] } };
+    D.nuvem = { casa: texto(o.casa, 60), email: texto(o.email, 80), cursor: '', inicial: !!o.inicial, fila: [], reservas: { etiqueta: [], produto: [], recebimento: [], contagem: [] } };
     D.recebimentos.forEach((r) => { if (!r.fechadoEm) r.aparelho = D.aparelho; });
     D.contagens.forEach((c) => { if (!c.fechadaEm) c.aparelho = D.aparelho; });
     return D;

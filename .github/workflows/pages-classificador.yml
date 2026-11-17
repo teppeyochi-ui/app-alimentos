@@ -69,6 +69,11 @@ jobs:
         working-directory: controle-validade
         run: node teste-nucleo.js
 
+      # A ligação com a nuvem, contra um Supabase de mentira (não usa a internet).
+      - name: Validade em Dia — testes da nuvem
+        working-directory: controle-validade
+        run: node teste-nuvem.js
+
       - name: Diário — dependências
         working-directory: diario-skin
         run: npm ci
@@ -106,7 +111,7 @@ jobs:
           cd ..
           mkdir -p _site/controle-validade
           cd controle-validade
-          cp index.html styles.css app.js core.js sw.js manifest.webmanifest ../_site/controle-validade/
+          cp index.html styles.css app.js core.js nuvem.js nuvem-config.js sw.js manifest.webmanifest ../_site/controle-validade/
           cp -r icones ../_site/controle-validade/
           cd ..
           touch _site/.nojekyll

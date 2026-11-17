@@ -8,6 +8,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const N = require('./core.js');
+const { criarServidorFalso } = require('./supabase/teste/servidor-falso.js');
 let playwright;
 try { playwright = require('playwright'); } catch (e) { playwright = require('/opt/node22/lib/node_modules/playwright'); }
 
@@ -28,7 +29,7 @@ const SEGUNDA = '2026-11-16T12:00:00'; // segunda-feira, meio-dia
   const capturas = process.argv.includes('--capturas');
   let n = 0;
 
-  async function abrir(opcoes, previa) {
+  async function abrir(opcoes, previa, preparar) {
     const ctx = await nav.newContext(Object.assign({ viewport: { width: 412, height: 860 }, deviceScaleFactor: capturas ? 2 : 1, locale: 'pt-BR', serviceWorkers: 'block' }, opcoes));
     const pag = await ctx.newPage();
     await pag.clock.setFixedTime(new Date(SEGUNDA));
@@ -40,6 +41,7 @@ const SEGUNDA = '2026-11-16T12:00:00'; // segunda-feira, meio-dia
     const erros = [];
     pag.on('console', (m) => { if (m.type() === 'error') erros.push(m.text()); });
     pag.on('pageerror', (e) => erros.push(String(e)));
+    if (preparar) await preparar(pag);
     await pag.goto(url);
     return { ctx, pag, erros };
   }
@@ -915,6 +917,285 @@ const SEGUNDA = '2026-11-16T12:00:00'; // segunda-feira, meio-dia
     await c.ctx.close();
   });
 
+  // ---------- nuvem: vários aparelhos (janelas) ligados ao mesmo Supabase de mentira ----------
+  const nuvem = await criarServidorFalso();
+  nuvem.criarConta('casa@exemplo.com', 'segredo');
+  // O arquivo nuvem-config.js do app publicado, apontando para o servidor de mentira.
+  const comNuvem = (pag) => pag.route('**/nuvem-config.js', (rota) => rota.fulfill({ contentType: 'text/javascript', body: 'window.NUVEM = ' + JSON.stringify({ url: nuvem.url, chave: nuvem.chave }) + ';' }));
+  const linhasDaCasa = () => nuvem.linhas('casa@exemplo.com');
+  // Espera uma condição ficar verdadeira (a sincronização acontece sozinha, alguns instantes depois de cada mudança).
+  const ate = async (condicao, oQue) => {
+    for (let i = 0; i < 100; i++) { if (await condicao()) return; await new Promise((ok) => setTimeout(ok, 100)); }
+    assert.fail('não aconteceu a tempo: ' + oQue);
+  };
+  const emDia = (p) => p.locator('#selo-nuvem:has-text("Nuvem em dia")').waitFor();
+  // Faz o aparelho conferir a nuvem agora (o mesmo gatilho de quando a conexão volta).
+  const puxar = (p) => p.evaluate(() => window.dispatchEvent(new Event('online')));
+  const ligar = async (p, senha) => {
+    await aba(p, 'ajustes');
+    await p.fill('#nv-email', 'casa@exemplo.com');
+    await p.fill('#nv-senha', senha || 'segredo');
+    await p.click('#nv-ligar');
+  };
+  // Pedidos recusados de propósito (senha errada, sessão vencida, servidor fora) aparecem no console do navegador.
+  const errosDoApp = (x) => x.erros.filter((e) => !/Failed to load resource|net::ERR_/.test(e));
+
+  const A = await abrir({ viewport: { width: 1180, height: 820 } }, false, comNuvem);
+  const B = await abrir({ viewport: { width: 1180, height: 820 } }, false, comNuvem);
+
+  await teste('nuvem: o primeiro aparelho leva os dados da casa para a nuvem', async () => {
+    const p = A.pag;
+    await aba(p, 'ajustes');
+    assert.ok(await p.isVisible('#cartao-nuvem #nv-email'), 'com o endereço no arquivo, só falta a conta da casa');
+    assert.strictEqual(await p.locator('[data-acao="nuvem-trocar-config"]').count(), 0);
+    assert.strictEqual(await p.isVisible('#selo-nuvem'), false, 'sem nuvem ligada, nada no topo');
+    await ligar(p, 'errada');
+    await p.locator('#nv-erro:has-text("E-mail ou senha não conferem.")').waitFor();
+    assert.strictEqual(await p.isVisible('#selo-nuvem'), false);
+    // A casa começa de verdade: sai o exemplo, fica o catálogo, entram o nome e a equipe.
+    await aba(p, 'validades');
+    await p.click('[data-acao="zerar"]');
+    await p.click('#frm button[type="submit"]');
+    await aba(p, 'ajustes');
+    await p.fill('#cfg-casa', 'Cozinha da Vó');
+    await p.fill('#cfg-equipe', 'José\nAna');
+    await p.locator('#cfg-equipe').blur();
+    await ligar(p);
+    await p.locator('#nv-proposta').waitFor();
+    assert.strictEqual(await p.textContent('#nv-proposta'), 'A nuvem da casa ainda está vazia. Os dados deste aparelho (27 produtos e 0 etiquetas) serão enviados para ela e passam a ser os dados da casa.');
+    await foto(p, '23-ligar-nuvem.png');
+    assert.strictEqual(Object.keys(linhasDaCasa()).length, 0, 'nada vai para a nuvem antes da confirmação');
+    await p.click('#frm button[type="submit"]');
+    await emDia(p);
+    assert.strictEqual(Object.keys(linhasDaCasa()).length, 28, '27 produtos e os ajustes da casa');
+    assert.deepStrictEqual([linhasDaCasa()['config|config'].dados.casa, linhasDaCasa()['config|config'].dados.equipe], ['Cozinha da Vó', ['José', 'Ana']]);
+    assert.strictEqual(linhasDaCasa()['config|config'].dados.tamanho, undefined, 'tamanho da etiqueta é de cada aparelho');
+    assert.ok(/^Ligado como casa@exemplo\.com · aparelho [A-Z2-9]{4}$/.test(await p.textContent('#cartao-nuvem p')), await p.textContent('#cartao-nuvem p'));
+    await p.locator('#nv-situacao:has-text("Em dia. Última sincronização às 12:00.")').waitFor();
+    // Com a nuvem ligada, o que apagaria os dados de todos some dos Ajustes.
+    assert.strictEqual(await p.locator('[data-acao="apagar"], [data-acao="exemplos"], [data-acao="restaurar"]').count(), 0);
+    assert.strictEqual(await p.locator('[data-acao="backup"]').count(), 1);
+    await semSobraLateral(p, 'Ajustes com a nuvem');
+    await foto(p, '24-nuvem-ligada.png', true);
+    // Etiquetas saem com os números da faixa reservada e sobem sozinhas.
+    await aba(p, 'leitor');
+    for (const c of ['MP001', 'ZZQ3', 'ZZOK']) await bipe(p, c);
+    assert.deepStrictEqual(await p.$$eval('#impressao .etq-num', (els) => els.map((e) => e.textContent)), ['ZZ000001', 'ZZ000002', 'ZZ000003']);
+    await ate(() => !!linhasDaCasa()['etiqueta|e3'], 'as etiquetas chegarem à nuvem');
+    assert.strictEqual(linhasDaCasa()['etiqueta|e1'].dados.nome, 'Camarão limpo');
+    await emDia(p);
+  });
+
+  await teste('nuvem: o segundo aparelho recebe tudo, e os dois trabalham juntos', async () => {
+    const a = A.pag, b = B.pag;
+    await ligar(b);
+    await b.locator('#nv-proposta').waitFor();
+    assert.strictEqual(await b.textContent('#nv-proposta'), 'Os dados de exemplo deste aparelho saem de cena. Entram os dados que a casa já tem na nuvem.');
+    await b.click('#frm button[type="submit"]');
+    await emDia(b);
+    assert.strictEqual(await b.textContent('#hoje'), 'Cozinha da Vó · seg, 16/11');
+    await aba(b, 'validades');
+    assert.strictEqual(await b.isVisible('.exemplo'), false);
+    assert.deepStrictEqual(await contagem(b), ['0', '0', '3', '0']);
+    await aba(b, 'produtos');
+    assert.strictEqual(await b.locator('#lista .item').count(), 27);
+    // B dá baixa numa etiqueta de A; A vê sem ninguém tocar na tela.
+    await aba(a, 'validades');
+    await aba(b, 'leitor');
+    assert.deepStrictEqual(await b.$$eval('#leitor-operador option', (els) => els.map((e) => e.textContent)), ['Não informar', 'José', 'Ana'], 'a equipe veio da nuvem');
+    await bipe(b, 'ZZPANA');
+    await bipe(b, 'ZZ000002');
+    await bipe(b, 'ZZUSO');
+    await ate(() => linhasDaCasa()['etiqueta|e2'].dados.status === 'usada', 'a baixa chegar à nuvem');
+    await puxar(a);
+    await ate(async () => (await contagem(a))[2] === '2', 'a baixa aparecer no painel do outro aparelho');
+    // B etiqueta: número da faixa dele, que nunca bate com a de A.
+    await bipe(b, 'PP001');
+    await bipe(b, 'ZZOK');
+    assert.strictEqual(await b.textContent('#impressao .etq-num'), 'ZZ001001');
+    await ate(() => !!linhasDaCasa()['etiqueta|e1001'], 'a etiqueta de B chegar à nuvem');
+    await puxar(a);
+    await a.locator('#lista .item:has-text("Nº 001001")').waitFor();
+    assert.ok(/Filé de tilápia porcionado/.test(await a.textContent('#lista .item:has-text("Nº 001001")')));
+    assert.ok(/· Ana/.test(await a.textContent('#lista .item:has-text("Nº 001001")')), 'com o responsável lido em B');
+    // Ajuste da casa mudado em B vale em A.
+    await aba(b, 'ajustes');
+    await b.fill('#cfg-alerta', '4');
+    await b.locator('#cfg-alerta').blur();
+    await ate(() => linhasDaCasa()['config|config'].dados.alertaDias === 4, 'o ajuste chegar à nuvem');
+    await puxar(a);
+    await a.locator('.tile[data-sit="breve"]:has-text("Vencem em até 4 dias")').waitFor();
+    // Recebimento aberto em A: é de A. B vê no histórico, mas segue livre.
+    await aba(a, 'leitor');
+    await a.click('[data-acao="comecar-recebimento"]');
+    await a.fill('#rec-fornecedor', 'Pescados Sul');
+    await a.click('#frm button[type="submit"]');
+    assert.ok(/Recebimento Nº 1 · Pescados Sul/.test(await a.textContent('.faixa p')));
+    await ate(() => !!linhasDaCasa()['recebimento|r1'], 'o recebimento chegar à nuvem');
+    await puxar(b);
+    await aba(b, 'estoque');
+    await b.locator('#recebimentos .item:has-text("Pescados Sul")').waitFor();
+    assert.ok(/em aberto em outro aparelho/.test(await b.textContent('#recebimentos .item')));
+    assert.strictEqual(await b.locator('.faixa').count(), 0);
+    await aba(b, 'leitor');
+    assert.ok(await b.isVisible('[data-acao="comecar-recebimento"]'), 'B pode abrir o seu');
+    await bipe(a, 'MP002');
+    await bipe(a, 'ZZOK');
+    await a.click('[data-acao="encerrar-recebimento"]');
+    await a.click('#frm button[type="submit"]');
+    await ate(() => linhasDaCasa()['recebimento|r1'].dados.fechadoEm > 0, 'o encerramento chegar à nuvem');
+    await puxar(b);
+    await aba(b, 'estoque');
+    await ate(async () => !/em aberto em outro aparelho/.test(await b.textContent('#recebimentos .item')), 'o recebimento aparecer encerrado em B');
+    assert.ok(/Carne moída ×1/.test(await b.textContent('#recebimentos .item')));
+    assert.deepStrictEqual(errosDoApp(A).concat(errosDoApp(B)), []);
+  });
+
+  await teste('nuvem: sem internet o aparelho segue etiquetando, e tudo vai quando a conexão volta', async () => {
+    const a = A.pag, b = B.pag;
+    nuvem.fora = true;
+    await aba(a, 'leitor');
+    for (const c of ['PP005', 'ZZQ2', 'ZZOK']) await bipe(a, c);
+    assert.deepStrictEqual(await a.$$eval('#impressao .etq-num', (els) => els.map((e) => e.textContent)), ['ZZ000005', 'ZZ000006'], 'os números reservados continuam valendo sem conexão');
+    await a.locator('#selo-nuvem:has-text("Sem conexão · 2 por enviar")').waitFor();
+    assert.strictEqual(linhasDaCasa()['etiqueta|e5'], undefined);
+    await aba(a, 'ajustes');
+    await a.locator('#nv-situacao:has-text("Sem conexão com a nuvem.")').waitFor();
+    assert.ok(/2 mudanças por enviar/.test(await a.textContent('#nv-situacao')));
+    // Fechar e abrir o app sem conexão: a fila continua lá.
+    await a.reload();
+    await a.locator('#selo-nuvem:has-text("Sem conexão · 2 por enviar")').waitFor();
+    nuvem.fora = false;
+    await puxar(a);
+    await emDia(a);
+    assert.strictEqual(linhasDaCasa()['etiqueta|e6'].dados.nome, 'Molho de tomate');
+    await puxar(b);
+    await aba(b, 'validades');
+    await b.locator('#lista .item:has-text("Nº 000006")').waitFor();
+    // Aberto de novo, com conexão: continua ligado, sem pedir senha e sem mandar nada repetido.
+    const antes = nuvem.pedidos.filter((x) => x.caminho === '/rest/v1/rpc/vd_enviar').length;
+    await a.reload();
+    await emDia(a);
+    assert.strictEqual(nuvem.pedidos.filter((x) => x.caminho === '/rest/v1/rpc/vd_enviar').length, antes);
+    assert.ok(/Cozinha da Vó/.test(await a.textContent('#hoje')));
+  });
+
+  await teste('nuvem: sessão terminada pede a senha de novo, sem perder o que foi feito', async () => {
+    const a = A.pag;
+    nuvem.derrubarSessoes();
+    await aba(a, 'validades');
+    await a.click('#lista .item:has-text("Nº 000005") [data-usar]');
+    await a.locator('#selo-nuvem:has-text("Nuvem: entrar de novo")').waitFor();
+    assert.notStrictEqual(linhasDaCasa()['etiqueta|e5'].dados.status, 'usada');
+    await a.click('#selo-nuvem');
+    await a.locator('#cartao-nuvem:has-text("A sessão na nuvem terminou.")').waitFor();
+    assert.ok(/1 mudança na fila/.test(await a.textContent('#cartao-nuvem')));
+    assert.strictEqual(await a.inputValue('#nv-email'), 'casa@exemplo.com');
+    await foto(a, '25-nuvem-entrar-de-novo.png');
+    await a.fill('#nv-senha', 'errada');
+    await a.click('#nv-ligar');
+    await a.locator('#nv-erro:has-text("E-mail ou senha não conferem.")').waitFor();
+    await a.fill('#nv-senha', 'segredo');
+    await a.click('#nv-ligar');
+    await emDia(a);
+    assert.strictEqual(linhasDaCasa()['etiqueta|e5'].dados.status, 'usada', 'a baixa feita sem sessão foi enviada');
+    assert.deepStrictEqual(errosDoApp(A), []);
+  });
+
+  await teste('nuvem: desligar um aparelho; ligar outro digitando o endereço; banco ainda não instalado', async () => {
+    const b = B.pag;
+    await puxar(b);
+    await aba(b, 'ajustes');
+    await b.click('[data-acao="nuvem-desligar"]');
+    assert.ok(/deixa de enviar e de receber/.test(await b.textContent('#frm')));
+    await b.click('#frm button[type="submit"]');
+    assert.ok(await b.isVisible('#nv-email'), 'volta a oferecer a ligação');
+    assert.strictEqual(await b.isVisible('#selo-nuvem'), false);
+    assert.strictEqual(await b.locator('[data-acao="apagar"]').count(), 1, 'e os dados voltam a ser só dele');
+    await aba(b, 'leitor');
+    await bipe(b, 'PP001');
+    await bipe(b, 'ZZOK');
+    assert.strictEqual(await b.textContent('#impressao .etq-num'), 'ZZ001002', 'segue numerando a partir do maior número que conhece');
+    assert.strictEqual(linhasDaCasa()['etiqueta|e1002'], undefined, 'e nada mais sobe');
+    // Aparelho com dados próprios tentando entrar numa casa que já tem dados: avisa que serão substituídos.
+    await ligar(b);
+    await b.locator('#nv-proposta').waitFor();
+    assert.ok(/A casa já tem dados na nuvem\. Os dados deste aparelho \(27 produtos e \d+ etiquetas\) serão substituídos pelos da nuvem\./.test(await b.textContent('#nv-proposta')), await b.textContent('#nv-proposta'));
+    await b.click('[data-acao="nuvem-cancelar"]');
+    assert.ok(await b.isVisible('#nv-email'), 'cancelou: nada muda');
+    await aba(b, 'validades');
+    assert.ok(await b.isVisible('#lista .item:has-text("Nº 001002")'));
+    await B.ctx.close();
+    // Sem o arquivo de configuração preenchido: o app pede o endereço e a chave neste aparelho.
+    const C = await abrir({ viewport: { width: 1180, height: 820 } });
+    const c = C.pag;
+    await aba(c, 'ajustes');
+    assert.ok(await c.isVisible('#nv-url') && !(await c.isVisible('#nv-email')));
+    await c.fill('#nv-url', 'meu projeto');
+    await c.fill('#nv-chave', nuvem.chave);
+    await c.click('#cartao-nuvem button[type="submit"]');
+    assert.ok(/começa com https:\/\//.test(await c.textContent('#nv-erro')));
+    await c.fill('#nv-url', nuvem.url + '/');
+    await c.click('#cartao-nuvem button[type="submit"]');
+    assert.ok(await c.isVisible('#nv-email'));
+    assert.strictEqual(await c.locator('[data-acao="nuvem-trocar-config"]').count(), 1);
+    // O banco ainda não foi instalado no projeto: o app diz isso e não liga.
+    nuvem.semBanco = true;
+    await ligar(c);
+    await c.locator('#nv-erro:has-text("se o banco foi instalado")').waitFor();
+    assert.strictEqual(await c.isVisible('#selo-nuvem'), false);
+    nuvem.semBanco = false;
+    await ligar(c);
+    await c.locator('#nv-proposta').waitFor();
+    await c.click('#frm button[type="submit"]');
+    await emDia(c);
+    await aba(c, 'validades');
+    await c.locator('#lista .item:has-text("Nº 001001")').waitFor();
+    assert.strictEqual(await c.locator('#lista .item:has-text("Nº 001002")').count(), 0, 'o que B fez depois de desligado ficou só em B');
+    // Três aparelhos já passaram pela casa: cada um com a sua faixa de números.
+    await aba(c, 'leitor');
+    await bipe(c, 'PP001');
+    await bipe(c, 'ZZOK');
+    assert.strictEqual(await c.textContent('#impressao .etq-num'), 'ZZ002001');
+    assert.deepStrictEqual(errosDoApp(C), []);
+    await C.ctx.close();
+    await A.ctx.close();
+    await nuvem.fechar();
+  });
+
+  await teste('duas abas no mesmo aparelho: só a aberta por último trabalha', async () => {
+    const x = await abrir();
+    await aba(x.pag, 'leitor');
+    const outra = await x.ctx.newPage();
+    await outra.goto(url);
+    await x.pag.locator('#frm:has-text("O app foi aberto em outra aba")').waitFor();
+    await x.pag.keyboard.press('Escape');
+    assert.ok(await x.pag.isVisible('#continuar-aqui'), 'o aviso não fecha com Esc');
+    // A aba nova trabalha normalmente e guarda o que faz.
+    await outra.click('#lista .item:has-text("Tomate em cubos") [data-usar]');
+    assert.deepStrictEqual(await outra.$$eval('.tiles .tile-n', (els) => els.map((e) => e.textContent)), ['1', '3', '3', '9']);
+    // "Continuar aqui" recarrega com o que a outra fez, e é a outra que para.
+    await x.pag.click('#continuar-aqui');
+    await outra.locator('#frm:has-text("O app foi aberto em outra aba")').waitFor();
+    await aba(x.pag, 'validades');
+    assert.deepStrictEqual(await contagem(x.pag), ['1', '3', '3', '9']);
+    assert.strictEqual(await x.pag.isVisible('#dlg'), false);
+    assert.deepStrictEqual(x.erros, []);
+    await x.ctx.close();
+  });
+
+  await teste('publicação: o workflow copia todos os arquivos que o app carrega', async () => {
+    const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'pages-classificador.yml'), 'utf8');
+    const copia = workflow.split('cd controle-validade')[1].split('cd ..')[0];
+    const pagina = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    const carregados = Array.from(pagina.matchAll(/(?:src|href)="([^"#:]+\.(?:js|css|webmanifest))"/g), (m) => m[1]);
+    const guardados = Array.from(fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8').matchAll(/'\.\/([^']+\.(?:js|css|html|webmanifest))'/g), (m) => m[1]);
+    assert.ok(carregados.indexOf('nuvem.js') >= 0 && carregados.indexOf('nuvem-config.js') >= 0);
+    carregados.concat(guardados, ['index.html', 'sw.js']).forEach((arq) => assert.ok(new RegExp('\\s' + arq.replace('.', '\\.') + '\\s').test(copia), arq + ' não é publicado pelo workflow'));
+    carregados.forEach((arq) => assert.ok(guardados.indexOf(arq) >= 0, arq + ' não fica guardado para uso sem internet'));
+    assert.ok(/working-directory: controle-validade\s+run: node teste-nuvem\.js/.test(workflow));
+  });
+
   await teste('tema escuro e tela larga', async () => {
     const escuro = await abrir({ colorScheme: 'dark' });
     assert.notStrictEqual(await escuro.pag.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(237, 240, 244)');
@@ -958,6 +1239,7 @@ const SEGUNDA = '2026-11-16T12:00:00'; // segunda-feira, meio-dia
     assert.strictEqual(await p.pag.locator('[data-acao="exportar"]').count(), 0);
     await aba(p.pag, 'ajustes');
     assert.strictEqual(await p.pag.locator('[data-acao="backup"], [data-acao="restaurar"], [data-acao="etiqueta-teste"]').count(), 0);
+    assert.strictEqual(await p.pag.locator('#cartao-nuvem').count(), 0, 'e sem nuvem');
     assert.deepStrictEqual(p.erros, []);
     await p.ctx.close();
   });

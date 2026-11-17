@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Validade em Dia</title>
+  <meta name="description" content="Controle de validade: entrada e etiquetagem com leitor de código de barras, painel do que vence e relatório de perdas.">
+  <meta name="theme-color" content="#14274a" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1a30" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Validade">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icones/icone-192.png">
+  <link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- corpo:inicio -->
+  <header class="topo">
+    <div class="dentro topo-dentro">
+      <h1 id="titulo">Validade em Dia</h1>
+      <p id="hoje"></p>
+      <button type="button" id="selo-nuvem" class="selo" data-acao="abrir-nuvem" hidden></button>
+    </div>
+  </header>
+
+  <nav class="abas" aria-label="Seções do app">
+    <div class="dentro abas-dentro">
+      <button type="button" data-aba="validades">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7.5"/><path d="M12 9v4.2l2.6 1.8M9.5 3h5"/></svg>
+        <span>Validades</span>
+      </button>
+      <button type="button" data-aba="leitor">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v12M7.5 6v12M11 6v12M13.5 6v12M17 6v12M20 6v12"/></svg>
+        <span>Leitor</span>
+      </button>
+      <button type="button" data-aba="etiquetar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12.2V5a1.5 1.5 0 0 1 1.5-1.5h7.2a2 2 0 0 1 1.4.6l6.3 6.3a2 2 0 0 1 0 2.8l-6.5 6.5a2 2 0 0 1-2.8 0L4.1 13.6a2 2 0 0 1-.6-1.4Z"/><circle cx="8" cy="8" r="1.3"/></svg>
+        <span>Etiquetar</span>
+      </button>
+      <button type="button" data-aba="produtos">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+        <span>Produtos</span>
+      </button>
+      <button type="button" data-aba="estoque">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 8 12 3.5 20.5 8v8L12 20.5 3.5 16Z"/><path d="M3.5 8 12 12.5 20.5 8M12 12.5v8"/></svg>
+        <span>Estoque</span>
+      </button>
+      <button type="button" data-aba="perdas">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 20v-6M12 20V6M17 20v-9"/></svg>
+        <span>Perdas</span>
+      </button>
+      <button type="button" data-aba="ajustes">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+        <span>Ajustes</span>
+      </button>
+    </div>
+  </nav>
+
+  <main id="app" class="dentro"></main>
+
+  <dialog id="dlg" aria-labelledby="dlg-titulo"><form id="frm" method="dialog" novalidate></form></dialog>
+  <div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
+  <div id="impressao" aria-hidden="true"></div>
+  <style id="pagina"></style>
+  <!-- corpo:fim -->
+
+  <noscript><p style="padding:16px">Este aplicativo precisa de JavaScript ativado.</p></noscript>
+  <script src="core.js"></script>
+  <script src="nuvem-config.js"></script>
+  <script src="nuvem.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

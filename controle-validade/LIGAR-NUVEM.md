@@ -33,9 +33,12 @@ procure o mais parecido.
 1. Abra [supabase.com](https://supabase.com) e entre na sua conta (ou crie uma em **Start your project**). O plano gratuito serve para começar.
 2. Clique em **New project**. É um projeto novo, separado do Diário da Linha Skin.
 3. Preencha:
-   - **Name:** `validade-em-dia`
+   - **Organization:** deixe a que já vem escolhida.
+   - **GitHub (optional):** não precisa. Não clique em **Connect GitHub**.
+   - **Project name:** `validade-em-dia`
    - **Database password:** clique em **Generate a password** e guarde essa senha num lugar seguro. O aplicativo não usa essa senha.
    - **Region:** **South America (São Paulo)**
+   - O que mais aparecer na página, deixe como veio. Se houver uma opção sobre **Data API**, ela precisa ficar ligada, com o esquema **public**: é por ela que o aplicativo conversa com o banco.
 4. Clique em **Create new project** e espere 1 a 2 minutos.
 
 ## Etapa 2: criar o banco

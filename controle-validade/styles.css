@@ -384,6 +384,19 @@ details[open] summary { margin-bottom: 12px; }
 .leituras .item span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .campos-linha { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 .campos-linha .campo { flex: 0 1 220px; }
+/* Aviso de algo em andamento (recebimento aberto, contagem), com o botão que continua ou encerra. */
+.faixa {
+  display: flex; gap: 10px 16px; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border: 1px solid var(--prim); border-radius: var(--raio);
+  background: var(--prim-suave); font-size: 1rem;
+}
+.faixa p { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+/* Quanto da contagem já foi conferido. */
+.medidor { height: 14px; border-radius: 7px; background: var(--trilho); overflow: hidden; }
+.medidor span { display: block; height: 100%; background: var(--barra); border-radius: 7px; }
+.lista-simples { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: .95rem; }
+.lista-simples li { overflow-wrap: anywhere; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .passos { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 8px; font-size: .95rem; }
 
 /* ---------- cartela de códigos (folha A4: medidas em mm, iguais na tela e no papel) ---------- */
@@ -429,6 +442,7 @@ td.mono { font-size: .84rem; }
 .curto { max-width: 320px; }
 
 /* ---------- janela e aviso ---------- */
+dialog.larga { width: min(760px, calc(100% - 32px)); }
 dialog { width: min(520px, calc(100% - 32px)); max-height: calc(100% - 32px); padding: 0; border: 1px solid var(--borda); border-radius: 16px; background: var(--sup); color: var(--texto); }
 dialog::backdrop { background: rgba(8, 14, 24, .55); }
 #frm { display: flex; flex-direction: column; gap: 14px; padding: 18px; }
@@ -461,6 +475,7 @@ dialog::backdrop { background: rgba(8, 14, 24, .55); }
   .previa-col { position: static; }
 }
 @media (max-width: 600px) {
+  .abas button { min-width: 58px; padding: 8px 7px 9px; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .item-acoes { width: 100%; }
   .item-acoes .bt { flex: 1 1 0; }

@@ -48,7 +48,7 @@ const SEGUNDA = '2026-11-16T12:00:00'; // segunda-feira, meio-dia
   // O aviso some sozinho em poucos segundos; sai da frente para não cobrir a tela na imagem.
   const foto = async (pag, arq, inteira) => {
     if (!capturas) return;
-    await pag.evaluate(() => { document.getElementById('aviso').hidden = true; });
+    await pag.evaluate((inteira) => { document.getElementById('aviso').hidden = true; if (!inteira) window.scrollTo(0, 0); }, !!inteira);
     await pag.screenshot({ path: path.join(__dirname, 'capturas', arq), fullPage: !!inteira });
   };
   const contagem = (pag) => pag.$$eval('.tiles .tile-n', (els) => els.map((e) => e.textContent));
@@ -306,7 +306,7 @@ const SEGUNDA = '2026-11-16T12:00:00'; // segunda-feira, meio-dia
     await pag.click('[data-acao="exportar"]');
     const planilha = fs.readFileSync(await (await baixou).path(), 'utf8');
     assert.ok(planilha.startsWith('﻿Número;Código;Produto;Tipo;Grupo'));
-    assert.ok(/000116;PP005;Molho de tomate;Em processo;Molhos e bases;Resfriado;Câmara fria;2 kg;Ana;16\/11\/26 12:00;19\/11\/26 23:59;;;;Ativa, no prazo/.test(planilha));
+    assert.ok(/000116;PP005;Molho de tomate;Em processo;Molhos e bases;Resfriado;Câmara fria;2 kg;Ana;16\/11\/26 12:00;19\/11\/26 23:59;;;;;;;Ativa, no prazo/.test(planilha));
   });
 
   await teste('ajustes: nome da casa, alerta e regra do 1º dia valem na hora', async () => {
@@ -688,6 +688,231 @@ const SEGUNDA = '2026-11-16T12:00:00'; // segunda-feira, meio-dia
     assert.ok(/24 produtos sem código ficaram de fora/.test(await m.pag.textContent('#app')));
     assert.deepStrictEqual(m.erros, []);
     await m.ctx.close();
+  });
+
+  // ---------- recebimento de mercadoria e contagem de estoque ----------
+  const R = await abrir({ viewport: { width: 1180, height: 820 } });
+
+  await teste('recebimento: fornecedor e nota uma vez só, e cada matéria-prima lida entra nele', async () => {
+    const p = R.pag;
+    await aba(p, 'leitor');
+    await p.click('[data-acao="comecar-recebimento"]');
+    await p.click('#frm button[type="submit"]');
+    assert.strictEqual(await p.textContent('#dlg-erro'), 'Informe o fornecedor.');
+    await p.fill('#rec-fornecedor', 'Pescados Atlântico');
+    await p.fill('#rec-nota', '4471');
+    await p.click('#frm button[type="submit"]');
+    assert.strictEqual(await retorno(p), 'Recebimento Nº 4 aberto: Pescados Atlântico. Leia o código de cada produto que chegou.');
+    assert.strictEqual(await p.textContent('.faixa p'), 'Recebimento Nº 4 · Pescados Atlântico · NF 4471 · 0 etiquetas');
+    assert.strictEqual(await p.locator('[data-acao="comecar-recebimento"]').count(), 0, 'já há um aberto');
+    assert.strictEqual(await p.evaluate(() => document.activeElement.id), 'leitor-campo');
+    // Matéria-prima: lote, temperatura de chegada e três volumes.
+    await bipe(p, 'MP001');
+    assert.ok(/Entra no recebimento Nº 4 \(Pescados Atlântico\)\./.test(await p.textContent('.leitor-cartao')));
+    await p.fill('#lt-lote', 'L9');
+    await p.fill('#lt-temp', '3,5');
+    await p.fill('#lt-qtd', '2 kg');
+    await bipe(p, 'ZZQ3');
+    assert.strictEqual(await p.inputValue('#lt-temp'), '3,5', 'o que foi digitado continua depois de outra leitura');
+    await foto(p, '18-recebimento.png');
+    await bipe(p, 'ZZOK');
+    assert.strictEqual(await retorno(p), '3 etiquetas de Camarão limpo: registradas.');
+    assert.ok(/NF 4471 · 3 etiquetas/.test(await p.textContent('.faixa p')));
+    // Temperatura que não é número: o app avisa na hora e não imprime.
+    await bipe(p, 'MP002');
+    await p.fill('#lt-temp', 'frio');
+    assert.ok(/temperatura de chegada é um número/.test(await p.textContent('#leitor-vence')));
+    const antes = await p.evaluate(() => window.__impressoes);
+    await bipe(p, 'ZZOK');
+    assert.ok(/temperatura de chegada é um número/.test(await retorno(p)));
+    assert.strictEqual(await p.evaluate(() => window.__impressoes), antes);
+    await p.fill('#lt-temp', '-15');
+    await bipe(p, 'ZZC2');
+    await bipe(p, 'ZZOK');
+    assert.strictEqual(await retorno(p), '1 etiqueta de Carne moída: registrada.');
+    // Produto em processo feito durante o recebimento não entra nele.
+    await bipe(p, 'PP001');
+    assert.strictEqual(await p.locator('#lt-temp').count(), 0);
+    await bipe(p, 'ZZOK');
+    assert.ok(/NF 4471 · 4 etiquetas/.test(await p.textContent('.faixa p')));
+    // A etiqueta lida depois mostra de onde veio.
+    await bipe(p, 'ZZ000114');
+    assert.ok(/Recebimento Nº 4 · Pescados Atlântico · NF 4471 · lote L9 · chegou a 3,5 °C/.test(await p.textContent('.leitor-cartao')));
+    await bipe(p, 'ZZNAO');
+  });
+
+  await teste('recebimento: ao encerrar, mostra o que chegou para conferir com a nota', async () => {
+    const p = R.pag;
+    await p.click('[data-acao="encerrar-recebimento"]');
+    assert.deepStrictEqual(await p.$$eval('#frm tbody tr', (trs) => trs.map((tr) => Array.from(tr.cells).map((c) => c.textContent))),
+      [['Camarão limpo', '3', '2 kg', 'L9', '', '3,5 °C'], ['Carne moída', '1', '', '', '', '-15 °C']]);
+    await p.fill('#rec-obs', 'Faltou uma caixa de camarão.');
+    await foto(p, '19-encerrar-recebimento.png');
+    await p.click('#frm button[type="submit"]');
+    assert.strictEqual(await retorno(p), 'Recebimento Nº 4 encerrado: 4 etiquetas de Pescados Atlântico.');
+    assert.strictEqual(await p.locator('.faixa').count(), 0);
+    assert.ok(await p.isVisible('[data-acao="comecar-recebimento"]'));
+    // Fora de um recebimento, a matéria-prima sai sem fornecedor (e a tela diz isso).
+    await bipe(p, 'MP001');
+    assert.ok(/Sem recebimento aberto/.test(await p.textContent('.leitor-cartao')));
+    await bipe(p, 'ZZNAO');
+    // Histórico na aba Estoque.
+    await aba(p, 'estoque');
+    assert.strictEqual(await p.locator('#recebimentos .item').count(), 4);
+    const primeiro = await p.textContent('#recebimentos .item');
+    assert.ok(/Nº 4 · Pescados Atlântico/.test(primeiro) && /NF 4471 · 4 etiquetas/.test(primeiro) && /Camarão limpo ×3, Carne moída ×1/.test(primeiro) && /Obs\.: Faltou uma caixa de camarão\./.test(primeiro), primeiro);
+    await p.click('#recebimentos [data-ver-recebimento="r4"]');
+    assert.strictEqual(await p.locator('#frm tbody tr').count(), 2);
+    assert.ok(/Faltou uma caixa/.test(await p.textContent('#frm')));
+    await p.click('#frm [data-acao="fechar"]');
+    // Saldo: o camarão que já existia mais os três que chegaram.
+    assert.deepStrictEqual(await p.$$eval('#saldo tbody tr', (trs) => trs.filter((tr) => tr.cells[0].textContent === 'Camarão limpo').map((tr) => [tr.cells[1].textContent, tr.cells[2].textContent, tr.cells[3].textContent])),
+      [['MP001', 'Matéria-prima', '4']]);
+    assert.ok(/22 etiquetas ativas/.test(await p.textContent('#app h2')));
+    await semSobraLateral(p, 'Estoque');
+    // O fornecedor fica de sugestão; recebimento aberto por engano e encerrado vazio é desfeito.
+    await p.click('[data-acao="comecar-recebimento"]');
+    assert.strictEqual(await p.getAttribute('#rec-fornecedores option', 'value'), 'Pescados Atlântico');
+    await p.fill('#rec-fornecedor', 'Engano');
+    await p.click('#frm button[type="submit"]');
+    await p.click('[data-acao="encerrar-recebimento"]');
+    assert.ok(/Nenhuma etiqueta foi emitida/.test(await p.textContent('#frm')));
+    await p.click('#frm button[type="submit"]');
+    assert.strictEqual(await retorno(p), 'Recebimento desfeito: nenhuma etiqueta tinha sido emitida.');
+    await aba(p, 'estoque');
+    assert.strictEqual(await p.locator('#recebimentos .item').count(), 4);
+    // No painel e na aba Etiquetar a chegada também aparece.
+    await aba(p, 'validades');
+    await p.fill('#busca', 'ZZ000117');
+    assert.ok(/Recebimento Nº 4 · Pescados Atlântico · NF 4471 · chegou a -15 °C/.test(await p.textContent('#lista .item')));
+    await p.fill('#busca', '');
+    await escolherProduto(p, 'Camarão limpo');
+    assert.ok(await p.isVisible('#etq-temp'));
+    assert.ok(/Sem recebimento aberto/.test(await p.textContent('#form-etq')));
+    await p.fill('#etq-temp', 'quente');
+    assert.ok(/temperatura de chegada é um número/.test(await p.textContent('#previa')));
+    await p.click('[data-acao="trocar-produto"]');
+    assert.deepStrictEqual(R.erros, []);
+  });
+
+  await teste('contagem de estoque: o leitor confere, mostra o que falta e o que estava fora do lugar', async () => {
+    const p = R.pag;
+    await aba(p, 'estoque');
+    await p.click('[data-acao="comecar-contagem"]');
+    await p.selectOption('#cont-local', 'Freezer');
+    await p.click('#frm button[type="submit"]');
+    assert.strictEqual(await retorno(p), 'Contagem Nº 2 começou: Freezer. Leia a etiqueta de cada item.');
+    assert.strictEqual(await p.textContent('.sobre'), 'Contagem de estoque Nº 2 · Freezer');
+    assert.strictEqual(await p.textContent('.leitor-nome'), '0 de 5 conferidas');
+    await bipe(p, 'ZZ000018');
+    assert.ok(/^Conferida: .+ \(1 de 5\)\.$/.test(await retorno(p)), await retorno(p));
+    await bipe(p, 'ZZ000018');
+    assert.ok(/já foi conferida/.test(await retorno(p)));
+    assert.strictEqual(await p.getAttribute('.retorno', 'role'), 'alert');
+    for (const c of ['ZZ000037', 'ZZ000063', 'ZZ000087']) await bipe(p, c);
+    assert.strictEqual(await p.textContent('.leitor-nome'), '4 de 5 conferidas');
+    // No meio da contagem não se etiqueta nem se dá baixa.
+    await bipe(p, 'MP001');
+    assert.ok(/Contagem em andamento: leia as etiquetas/.test(await retorno(p)));
+    assert.strictEqual(await p.textContent('.leitor-nome'), '4 de 5 conferidas');
+    await escolherProduto(p, 'Vinagrete');
+    assert.ok(/contagem de estoque em andamento/.test(await p.textContent('#previa')));
+    await p.click('[data-acao="trocar-produto"]');
+    // Item de outro local achado no freezer: é conferido e passa a constar ali.
+    await aba(p, 'leitor');
+    await bipe(p, 'ZZ000110');
+    assert.strictEqual(await retorno(p), 'Conferida: Molho de tomate pote 300 g (5 de 6). Local atualizado para Freezer.');
+    // Etiqueta que já tinha baixa, mas o item está ali: desfaz a baixa e confere.
+    await bipe(p, 'ZZ000001');
+    assert.ok(/teve baixa como (usada|descartada) em \d\d\/\d\d\. Se está no estoque, desfaça a baixa\./.test(await retorno(p)));
+    await p.click('[data-acao="reativar-contar"]');
+    assert.ok(/\(6 de 7\)\. Local atualizado para Freezer\.$/.test(await retorno(p)), await retorno(p));
+    await p.click('#cont-faltam summary');
+    assert.deepStrictEqual(await p.locator('#cont-faltam li').allTextContents(), ['Nº 000090 Lasanha de carne 500 g']);
+    await bipe(p, 'ZZ000999');
+    assert.ok(await p.isVisible('#cont-faltam li'), 'a lista do que falta continua aberta depois de outra leitura');
+    await foto(p, '20-contagem.png');
+    // A contagem fica guardada: fechar e abrir o app continua de onde parou.
+    await p.goto(url + '#estoque');
+    assert.strictEqual(await p.textContent('.faixa p'), 'Contagem de estoque Nº 2 em andamento · Freezer · 6 de 7 conferidas');
+    await p.click('[data-acao="comecar-recebimento"]');
+    assert.ok(/contagem de estoque em andamento/.test(await p.textContent('#aviso')));
+    await p.click('.faixa [data-aba="leitor"]');
+    assert.strictEqual(await p.textContent('.leitor-nome'), '6 de 7 conferidas');
+  });
+
+  await teste('contagem de estoque: ao encerrar, decide o que fazer com o que não foi achado', async () => {
+    const p = R.pag;
+    await p.click('[data-acao="encerrar-contagem"]');
+    assert.ok(/6 de 7 conferidas/.test(await p.textContent('#frm')));
+    assert.ok(/Nº 000090 Lasanha de carne 500 g · Freezer · vence em \d+ dias/.test(await p.textContent('#frm .lista-simples')));
+    assert.ok(await p.isChecked('#cont-deixar'), 'por padrão, nada recebe baixa');
+    await foto(p, '21-encerrar-contagem.png');
+    await p.check('#cont-baixar');
+    await p.click('#frm button[type="submit"]');
+    assert.strictEqual(await retorno(p), 'Contagem Nº 2 encerrada: 6 de 7 conferidas; 1 não encontrada recebeu baixa.');
+    assert.ok(await p.isVisible('.leitor-livre'));
+    await bipe(p, 'ZZ000090');
+    assert.ok(/Baixa em 16\/11 às 12:00: descartada \(não encontrado na contagem\)/.test(await p.textContent('.leitor-cartao')));
+    await bipe(p, 'ZZNAO');
+    await aba(p, 'estoque');
+    assert.strictEqual(await p.locator('#contagens .item').count(), 2);
+    const primeira = await p.textContent('#contagens .item');
+    assert.ok(/Nº 2 · Freezer/.test(primeira) && /6 de 7 conferidas/.test(primeira) && /1 não encontrada: Nº 000090 \(Lasanha de carne 500 g\)\. Recebeu baixa\./.test(primeira), primeira);
+    await foto(p, '22-estoque.png', true);
+    await aba(p, 'perdas');
+    assert.ok((await p.locator('.cartao:first-child .b-nome').allTextContents()).indexOf('Não encontrado na contagem') >= 0);
+    // Contagem de tudo, encerrada sem dar baixa; e desistir de uma contagem.
+    await aba(p, 'estoque');
+    await p.click('[data-acao="comecar-contagem"]');
+    await p.selectOption('#cont-tipo', 'pa');
+    await p.click('#frm button[type="submit"]');
+    assert.strictEqual(await p.textContent('.sobre'), 'Contagem de estoque Nº 3 · Todos os locais · Produto acabado');
+    assert.strictEqual(await p.textContent('.leitor-nome'), '0 de 1 conferidas');
+    await bipe(p, 'ZZ000114');
+    assert.strictEqual(await retorno(p), 'Esta contagem é só de produtos do tipo Produto acabado. Camarão limpo é Matéria-prima.');
+    await p.click('[data-acao="encerrar-contagem"]');
+    await p.click('#frm button[type="submit"]');
+    assert.strictEqual(await retorno(p), 'Contagem Nº 3 encerrada: 0 de 1 conferidas; 1 não encontrada ficou como estava.');
+    await aba(p, 'estoque');
+    await p.click('[data-acao="comecar-contagem"]');
+    await p.click('#frm button[type="submit"]');
+    await p.click('[data-acao="desistir-contagem"]');
+    assert.deepStrictEqual(await p.locator('#frm .dlg-pe button').allTextContents(), ['Continuar contando', 'Desistir da contagem']);
+    await p.click('#frm button[type="submit"]');
+    assert.strictEqual(await retorno(p), 'Contagem descartada.');
+    await aba(p, 'estoque');
+    assert.strictEqual(await p.locator('#contagens .item').count(), 3);
+    // Com recebimento aberto não se conta o estoque.
+    await p.click('[data-acao="comecar-recebimento"]');
+    await p.fill('#rec-fornecedor', 'Pescados Atlântico');
+    await p.click('#frm button[type="submit"]');
+    await aba(p, 'estoque');
+    assert.ok(/Recebimento Nº 5 · Pescados Atlântico · aberto · 0 etiquetas/.test(await p.textContent('.faixa p')));
+    await p.click('[data-acao="comecar-contagem"]');
+    assert.ok(/recebimento Nº 5 está aberto/.test(await p.textContent('#aviso')));
+    assert.deepStrictEqual(R.erros, []);
+    await R.ctx.close();
+  });
+
+  await teste('recebimento e contagem no celular: nada vaza da tela', async () => {
+    const c = await abrir();
+    await aba(c.pag, 'estoque');
+    await semSobraLateral(c.pag, 'Estoque');
+    await c.pag.click('#recebimentos [data-ver-recebimento]');
+    await semSobraLateral(c.pag, 'Ver recebimento');
+    await c.pag.click('#frm [data-acao="fechar"]');
+    await c.pag.click('[data-acao="comecar-contagem"]');
+    await c.pag.click('#frm button[type="submit"]');
+    await bipe(c.pag, 'ZZ000090');
+    await c.pag.click('#cont-faltam summary');
+    await semSobraLateral(c.pag, 'Leitor, contagem');
+    await c.pag.click('[data-acao="encerrar-contagem"]');
+    await semSobraLateral(c.pag, 'Encerrar contagem');
+    await c.pag.click('#frm [data-acao="fechar"]');
+    assert.ok(await c.pag.evaluate(() => { const b = document.querySelector('.abas button.on').getBoundingClientRect(); return b.left >= 0 && b.right <= window.innerWidth; }), 'a aba aberta fica à vista');
+    assert.deepStrictEqual(c.erros, []);
+    await c.ctx.close();
   });
 
   await teste('tema escuro e tela larga', async () => {

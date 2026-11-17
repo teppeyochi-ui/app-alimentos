@@ -3,15 +3,16 @@
  * ficam em core.js; aqui só se desenha a tela e se guarda o que foi feito.
  *
  * Abas: Validades (painel do que está ativo) · Leitor (operação com o leitor de código
- * de barras) · Etiquetar (o mesmo, tocando na tela) · Produtos (catálogo) · Perdas · Ajustes.
+ * de barras: etiquetar, dar baixa, receber mercadoria, contar o estoque) · Etiquetar (o mesmo,
+ * tocando na tela) · Produtos (catálogo) · Estoque (saldo, recebimentos, contagens) · Perdas · Ajustes.
  */
 (function () {
   'use strict';
   const N = window.Nucleo;
   // Ligado só na prévia publicada como página: lá o navegador não deixa imprimir nem baixar arquivo.
   const PREVIA = !!window.MODO_PREVIA;
-  const VERSAO = '0.2';
-  const ABAS = ['validades', 'leitor', 'etiquetar', 'produtos', 'perdas', 'ajustes'];
+  const VERSAO = '0.3';
+  const ABAS = ['validades', 'leitor', 'etiquetar', 'produtos', 'estoque', 'perdas', 'ajustes'];
 
   const $ = (s, el) => (el || document).querySelector(s);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -28,14 +29,14 @@
     aba: 'validades', sit: '', local: '', tipo: '', busca: '', grupo: '', tipoEtq: '', etqBusca: '', prodBusca: '', periodo: 30,
     r: rascunho(),
     // Leitor: a situação da tela (ver bipar no núcleo), a última resposta e as leituras recentes.
-    S: N.sessao(), retorno: null, log: [], cartela: false,
+    S: N.sessao(), retorno: null, log: [], cartela: false, faltamAberto: false,
   };
 
   // O que está sendo preenchido na aba Etiquetar. Local e responsável ficam para a próxima etiqueta.
   function rascunho(antes) {
     return {
       produtoId: '', modo: '', local: antes ? antes.local : '', responsavel: antes ? antes.responsavel : '',
-      qtd: '', copias: 1, quando: 'agora', feito: '', lote: '', valOrig: '', origAberto: false,
+      qtd: '', copias: 1, quando: 'agora', feito: '', lote: '', valOrig: '', temp: '', origAberto: false,
     };
   }
 
@@ -62,6 +63,15 @@
   const origensTexto = (cods) => cods.map((c) => { const o = etiquetaPorCod(c); return 'Nº ' + N.fmtCodigo(c) + (o ? ' (' + o.nome + ')' : ''); }).join(', ');
   const quandoFeito = (e) => N.diaSemana(e.feitoEm) + ' ' + N.fmtData(e.feitoEm) + ' ' + N.fmtHora(e.feitoEm);
   const quandoVence = (e) => N.diaSemana(e.venceEm) + ' ' + N.fmtData(e.venceEm) + (e.porHora ? ' ' + N.fmtHora(e.venceEm) : '');
+  const quandoFoi = (ms) => N.diaSemana(ms) + ' ' + N.fmtData(ms) + ' ' + N.fmtHora(ms);
+  const recebimentoDe = (e) => (e.recebimentoId ? D.recebimentos.find((r) => r.id === e.recebimentoId) : null);
+  const recebimentoTexto = (r) => 'Recebimento Nº ' + r.n + ' · ' + r.fornecedor + (r.nota ? ' · NF ' + r.nota : '');
+  // De onde veio a matéria-prima: recebimento (fornecedor e nota), lote do fabricante e temperatura de chegada.
+  const chegadaTexto = (e) => {
+    const r = recebimentoDe(e);
+    return [r && recebimentoTexto(r), e.loteOrigem && 'lote ' + e.loteOrigem, e.tempChegada != null && 'chegou a ' + N.fmtTemperatura(e.tempChegada)].filter(Boolean).join(' · ');
+  };
+  const faixa = (txt, botao) => '<div class="faixa"><p>' + txt + '</p>' + botao + '</div>';
 
   // ---------- código de barras ----------
   const CLARA = 10;   // margem clara de cada lado, em módulos (o leitor precisa dela)
@@ -191,6 +201,7 @@
       '<div class="item-meta">' + esc(meta) + '</div>' +
       '<div class="item-datas mono">' + esc(datas) + '</div>' +
       (e.origens.length ? '<div class="item-datas">Feito com ' + esc(origensTexto(e.origens)) + '</div>' : '') +
+      (recebimentoDe(e) || e.tempChegada != null ? '<div class="item-datas">' + esc(chegadaTexto(e)) + '</div>' : '') +
       '</div><div class="item-acoes">' +
       '<button type="button" class="bt" data-usar="' + e.id + '">Usado</button>' +
       '<button type="button" class="bt bt-perigo" data-descartar="' + e.id + '">Descartar</button>' +
@@ -245,10 +256,10 @@
     const r = N.bipar(D, UI.S, codigo, agora());
     UI.S = r.S;
     if (!r.msg) { if (UI.aba === 'leitor') focoLeitor(); return; }
-    UI.retorno = { ok: r.ok, msg: r.msg + (r.imprimir && PREVIA ? ' Nesta prévia a impressão fica desligada.' : ''), baixa: r.baixa || '' };
+    UI.retorno = { ok: r.ok, msg: r.msg + (r.imprimir && PREVIA ? ' Nesta prévia a impressão fica desligada.' : ''), baixa: r.baixa || '', reativar: r.reativar || '' };
     UI.log.unshift({ t: agora(), ok: r.ok, msg: r.msg });
     UI.log.length = Math.min(UI.log.length, 6);
-    if (r.imprimir || r.baixa) gravar();
+    if (r.imprimir || r.baixa || r.mudou) gravar();
     tocar(r.ok);
     UI.cartela = false;
     if (UI.aba !== 'leitor') ir('leitor'); else render();
@@ -282,7 +293,7 @@
 
   const pedidoLeitor = () => {
     const S = UI.S;
-    return { produtoId: S.produtoId, modo: S.conserv, local: S.local, responsavel: S.operador, qtd: S.qtd, copias: S.copias, loteOrigem: S.lote, validadeOrigem: S.valOrig, origens: S.origens };
+    return { produtoId: S.produtoId, modo: S.conserv, local: S.local, responsavel: S.operador, qtd: S.qtd, copias: S.copias, loteOrigem: S.lote, validadeOrigem: S.valOrig, tempChegada: S.temp, origens: S.origens };
   };
 
   function telaLeitor() {
@@ -291,13 +302,36 @@
     const produto = S.modo === 'nova' && D.produtos.find((x) => x.id === S.produtoId);
     const etiqueta = S.modo === 'etiqueta' && D.etiquetas.find((x) => x.id === S.etiquetaId);
     if ((S.modo === 'nova' && !produto) || (S.modo === 'etiqueta' && !etiqueta)) UI.S = N.sessao(S.operador);
+    const contagem = N.contagemAberta(D);
+    const rec = N.recebimentoAberto(D);
     return '<form id="form-leitor" class="leitor-entrada" autocomplete="off" novalidate>' +
       '<label for="leitor-campo">' + ICO_BARRAS + 'Leia o código com o leitor</label>' +
       '<div class="leitor-linha"><input type="text" id="leitor-campo" autocapitalize="characters" autocomplete="off" spellcheck="false" enterkeyhint="go" placeholder="ou digite o código e aperte Enter">' +
       '<button type="submit" class="bt">Ler</button></div></form>' +
       retornoHtml() +
-      (produto ? leitorNova(produto) : etiqueta ? leitorEtiqueta(etiqueta) : leitorLivre()) +
+      (contagem
+        ? leitorContagem(contagem)
+        : (rec ? faixa('<strong>' + esc(recebimentoTexto(rec)) + '</strong> · ' + plural(N.etiquetasDoRecebimento(D, rec.id).length, 'etiqueta', 'etiquetas'),
+            '<button type="button" class="bt" data-acao="encerrar-recebimento">Encerrar recebimento</button>') : '') +
+          (produto ? leitorNova(produto) : etiqueta ? leitorEtiqueta(etiqueta) : leitorLivre(rec))) +
       leitorRodape();
+  }
+
+  // Contagem de estoque em andamento: o leitor só confere etiquetas.
+  function leitorContagem(c) {
+    const a = N.andamentoContagem(D, c);
+    const pct = a.esperadas ? Math.round(a.conferidas / a.esperadas * 100) : 100;
+    return '<section class="cartao leitor-cartao">' +
+      '<p class="sobre">Contagem de estoque Nº ' + c.n + ' · ' + esc(N.escopoTexto(c)) + '</p>' +
+      '<h2 class="leitor-nome"><span id="cont-n">' + a.conferidas + '</span> de ' + a.esperadas + ' conferidas</h2>' +
+      '<div class="medidor" role="img" aria-label="' + pct + '% conferido"><span style="width:' + pct + '%"></span></div>' +
+      '<p class="dica">Leia a etiqueta de cada item' + (c.local ? ' que está em ' + esc(c.local) : '') + '. O que não for lido aparece como não encontrado ao encerrar.</p>' +
+      (a.faltando.length
+        ? '<details id="cont-faltam"' + (UI.faltamAberto ? ' open' : '') + '><summary>Ainda não lidas (' + a.faltando.length + ')</summary><ul class="lista-simples">' +
+          a.faltando.map((e) => '<li><span class="mono">Nº ' + N.fmtCodigo(e.cod) + '</span> ' + esc(e.nome) + (e.local && !c.local ? ' · ' + esc(e.local) : '') + '</li>').join('') + '</ul></details>'
+        : '<p><strong>Tudo conferido.</strong></p>') +
+      '<div class="leitor-acoes"><button type="button" class="bt bt-prim bt-enorme" data-acao="encerrar-contagem">Encerrar contagem</button>' +
+      '<button type="button" class="bt bt-enorme" data-acao="desistir-contagem">Desistir</button></div></section>';
   }
 
   function retornoHtml() {
@@ -306,15 +340,19 @@
     return '<div class="retorno ' + (r.ok ? 'bom' : 'ruim') + '" role="' + (r.ok ? 'status' : 'alert') + '">' + (r.ok ? ICO.ok : ICO.vencido) +
       '<p>' + esc(r.msg) + '</p>' +
       (r.baixa ? '<button type="button" class="bt" data-acao="desfazer-leitor">Desfazer</button>' : '') +
+      (r.reativar ? '<button type="button" class="bt" data-acao="reativar-contar">Desfazer a baixa e contar</button>' : '') +
       (!r.ok && UI.S.desconhecido ? '<button type="button" class="bt" data-acao="cadastrar-lido">Cadastrar este código</button>' : '') +
       '</div>';
   }
 
-  function leitorLivre() {
+  function leitorLivre(rec) {
     return '<section class="leitor-livre"><h2>Pronto para ler</h2><ul class="leitor-guia">' +
       '<li><strong>Código de um produto</strong>, na cartela ou na caixa: começa uma etiqueta nova.</li>' +
       '<li><strong>Etiqueta já impressa</strong>: abre para dar baixa como usada ou descartada.</li>' +
-      '</ul></section>';
+      '</ul>' +
+      (rec ? '' : '<div class="barra"><button type="button" class="bt" data-acao="comecar-recebimento">Começar recebimento</button>' +
+        '<span class="dica">Chegou compra? O recebimento guarda o fornecedor e a nota fiscal de cada matéria-prima.</span></div>') +
+      '</section>';
   }
 
   function leitorVence(m, p) {
@@ -356,9 +394,11 @@
         : '') +
       (p.tipo === 'mp'
         ? '<label class="campo">Lote do fabricante (opcional)<input type="text" id="lt-lote" data-campo="lote" maxlength="20" autocomplete="off" value="' + esc(S.lote) + '"></label>' +
-          '<label class="campo">Validade do fabricante (opcional)<input type="date" id="lt-valorig" data-campo="valOrig" value="' + esc(S.valOrig) + '"></label>'
+          '<label class="campo">Validade do fabricante (opcional)<input type="date" id="lt-valorig" data-campo="valOrig" value="' + esc(S.valOrig) + '"></label>' +
+          '<label class="campo">Temperatura de chegada, em °C (opcional)<input type="text" id="lt-temp" data-campo="temp" inputmode="decimal" maxlength="8" placeholder="ex.: 3,5" autocomplete="off" value="' + esc(S.temp) + '"></label>'
         : '') +
       '</div>' +
+      (p.tipo === 'mp' ? '<p class="dica">' + notaRecebimento() + '</p>' : '') +
       (p.tipo === 'mp' ? '' : '<div class="origens"><strong>Feito com</strong>' +
         (S.origens.length
           ? '<ul>' + S.origens.map((c) => '<li><span>' + esc(origensTexto([c])) + '</span><button type="button" class="bt bt-mini" data-tira-origem="' + c + '" aria-label="Tirar Nº ' + N.fmtCodigo(c) + '">Tirar</button></li>').join('') + '</ul>'
@@ -371,6 +411,11 @@
       '<aside class="previa-col"><h2>Prévia da etiqueta</h2><div id="previa">' + previaLeitor(m) + '</div></aside>' +
       '</div>';
   }
+
+  const notaRecebimento = () => {
+    const rec = N.recebimentoAberto(D);
+    return rec ? 'Entra no recebimento Nº ' + rec.n + ' (' + esc(rec.fornecedor) + ').' : 'Sem recebimento aberto: estas etiquetas saem sem fornecedor e nota fiscal.';
+  };
 
   // Um campo opcional mudou: refaz só a data de vencimento e a prévia, sem tirar o cursor do lugar.
   function atualizarLeitor() {
@@ -410,6 +455,7 @@
       '<p class="item-meta">' + esc(meta) + '</p>' +
       '<p class="item-datas mono">feito ' + quandoFeito(e) + ' · vence ' + quandoVence(e) + '</p>' +
       (e.origens.length ? '<p class="item-datas">Feito com ' + esc(origensTexto(e.origens)) + '</p>' : '') +
+      (chegadaTexto(e) ? '<p class="item-datas">' + esc(chegadaTexto(e)) + '</p>' : '') +
       acoes + '</section>';
   }
 
@@ -537,7 +583,9 @@
       '<label class="campo">' + (p.tipo === 'mp' ? 'Entrada' : 'Preparo') + '<select id="etq-quando"><option value="agora"' + (r.quando === 'agora' ? ' selected' : '') + '>Agora</option>' +
       '<option value="outra"' + (r.quando === 'outra' ? ' selected' : '') + '>Outra data e hora</option></select></label>' +
       '<label class="campo" id="etq-feito-campo"' + (r.quando === 'outra' ? '' : ' hidden') + '>Data e hora<input type="datetime-local" id="etq-feito" value="' + esc(r.feito) + '"></label>' +
+      (p.tipo === 'mp' ? '<label class="campo">Temperatura de chegada, em °C<input type="text" id="etq-temp" inputmode="decimal" maxlength="8" placeholder="ex.: 3,5" autocomplete="off" value="' + esc(r.temp) + '"></label>' : '') +
       '</div>' +
+      (p.tipo === 'mp' ? '<p class="dica">' + notaRecebimento() + '</p>' : '') +
       '<details id="etq-orig"' + (r.origAberto ? ' open' : '') + '><summary>Produto aberto da embalagem original</summary>' +
       '<div class="campos">' +
       '<label class="campo">Lote do fabricante<input type="text" id="etq-lote" maxlength="20" autocomplete="off" value="' + esc(r.lote) + '"></label>' +
@@ -566,6 +614,7 @@
     r.feito = $('#etq-feito').value;
     r.lote = $('#etq-lote').value;
     r.valOrig = $('#etq-valorig').value;
+    r.temp = $('#etq-temp') ? $('#etq-temp').value : '';
     r.origAberto = $('#etq-orig').open;
   }
 
@@ -578,7 +627,7 @@
       if (isNaN(t)) return { erro: 'Informe a data e a hora.' };
       feitoEm = t;
     }
-    return { produtoId: r.produtoId, modo: r.modo, local: r.local, responsavel: r.responsavel, qtd: r.qtd, copias: r.copias, feitoEm, loteOrigem: r.lote, validadeOrigem: r.valOrig };
+    return { produtoId: r.produtoId, modo: r.modo, local: r.local, responsavel: r.responsavel, qtd: r.qtd, copias: r.copias, feitoEm, loteOrigem: r.lote, validadeOrigem: r.valOrig, tempChegada: r.temp };
   }
 
   function atualizarPrevia() {
@@ -696,6 +745,174 @@
         render();
         avisar(r.produto.nome + ' salvo no catálogo.');
         if (depois) depois(r.produto);
+      });
+  }
+
+  // ---------- Estoque ----------
+  const tabelaRecebimento = (r) => {
+    const resumo = N.resumoRecebimento(D, r);
+    if (!resumo.itens.length) return '';
+    return '<div class="rola"><table><thead><tr><th>Produto</th><th class="num">Etiquetas</th><th>Quantidade</th><th>Lote</th><th>Validade do fabricante</th><th>Temperatura</th></tr></thead><tbody>' +
+      resumo.itens.map((i) => '<tr><td class="quebra">' + esc(i.nome) + '</td><td class="num">' + i.n + '</td><td>' + esc(i.qtds.join(', ')) + '</td><td class="mono">' + esc(i.lote) + '</td>' +
+        '<td class="mono">' + (i.validadeOrigem ? N.fmtDataAno(N.deIso(i.validadeOrigem)) : '') + '</td><td>' + esc(i.temps.map(N.fmtTemperatura).join(', ')) + '</td></tr>').join('') +
+      '</tbody></table></div>';
+  };
+
+  function telaEstoque() {
+    const rec = N.recebimentoAberto(D);
+    const cont = N.contagemAberta(D);
+    const S = N.saldo(D, agora());
+    const total = S.reduce((t, x) => t + x.n, 0);
+    const recs = D.recebimentos.filter((r) => r.fechadoEm).reverse();
+    const conts = D.contagens.filter((c) => c.fechadaEm).reverse();
+    const continuar = '<button type="button" class="bt" data-aba="leitor">Continuar no Leitor</button>';
+    let andamento = '';
+    if (cont) {
+      const a = N.andamentoContagem(D, cont);
+      andamento = faixa('<strong>Contagem de estoque Nº ' + cont.n + ' em andamento</strong> · ' + esc(N.escopoTexto(cont)) + ' · ' + a.conferidas + ' de ' + a.esperadas + ' conferidas', continuar);
+    } else if (rec) {
+      andamento = faixa('<strong>' + esc(recebimentoTexto(rec)) + '</strong> · aberto · ' + plural(N.etiquetasDoRecebimento(D, rec.id).length, 'etiqueta', 'etiquetas'), continuar);
+    }
+    const itemRecebimento = (r) => {
+      const resumo = N.resumoRecebimento(D, r);
+      return '<li class="item"><div class="item-info">' +
+        '<div class="item-nome"><span>Nº ' + r.n + ' · ' + esc(r.fornecedor) + '</span></div>' +
+        '<div class="item-meta">' + esc([quandoFoi(r.abertoEm), r.nota && 'NF ' + r.nota, r.responsavel, plural(resumo.etiquetas, 'etiqueta', 'etiquetas')].filter(Boolean).join(' · ')) + '</div>' +
+        '<div class="item-datas">' + esc(resumo.itens.map((i) => i.nome + ' ×' + i.n).join(', ')) + '</div>' +
+        (r.obs ? '<div class="item-datas">Obs.: ' + esc(r.obs) + '</div>' : '') +
+        '</div><div class="item-acoes"><button type="button" class="bt" data-ver-recebimento="' + r.id + '">Ver</button></div></li>';
+    };
+    const itemContagem = (c) => {
+      const faltam = c.faltando.length;
+      return '<li class="item"><div class="item-info">' +
+        '<div class="item-nome"><span>Nº ' + c.n + ' · ' + esc(N.escopoTexto(c)) + '</span>' +
+        '<span class="pill p-' + (faltam ? 'vencido' : 'ok') + '">' + ICO[faltam ? 'vencido' : 'ok'] + c.conferidas + ' de ' + c.esperadas + ' conferidas</span></div>' +
+        '<div class="item-meta">' + esc([quandoFoi(c.abertaEm), c.responsavel].filter(Boolean).join(' · ')) + '</div>' +
+        (faltam ? '<div class="item-datas">' + plural(faltam, 'não encontrada', 'não encontradas') + ': ' + esc(origensTexto(c.faltando)) + '. ' +
+          (c.baixou ? (faltam === 1 ? 'Recebeu baixa.' : 'Receberam baixa.') : (faltam === 1 ? 'Ficou como estava.' : 'Ficaram como estavam.')) + '</div>' : '') +
+        '</div></li>';
+    };
+    return andamento +
+      '<div class="barra">' +
+      '<button type="button" class="bt bt-prim" data-acao="comecar-contagem">Contar o estoque</button>' +
+      '<button type="button" class="bt" data-acao="comecar-recebimento">Começar recebimento</button>' +
+      (PREVIA ? '' : '<button type="button" class="bt empurra" data-acao="exportar">Exportar planilha</button>') + '</div>' +
+      '<section class="bloco"><h2 class="grupo">Em estoque <span class="n">' + plural(total, 'etiqueta ativa', 'etiquetas ativas') + '</span></h2>' +
+      (S.length
+        ? '<div class="rola"><table id="saldo"><thead><tr><th>Produto</th><th>Código</th><th>Tipo</th><th class="num">Etiquetas</th><th>Vence primeiro</th></tr></thead><tbody>' +
+          S.map((x) => '<tr><td class="quebra">' + esc(x.nome) + '</td><td class="mono">' + esc(x.codigo) + '</td><td>' + N.TIPO[x.tipo].nome + '</td><td class="num">' + x.n + '</td>' +
+            '<td><span class="pill p-' + x.sit + '">' + ICO[x.sit] + esc(x.resta) + '</span></td></tr>').join('') + '</tbody></table></div>'
+        : vazioHtml('Nada em estoque', 'As etiquetas ativas aparecem aqui, somadas por produto.')) + '</section>' +
+      '<section class="bloco"><h2 class="grupo">Recebimentos <span class="n">' + recs.length + '</span></h2>' +
+      (recs.length ? '<ul class="itens" id="recebimentos">' + recs.slice(0, 15).map(itemRecebimento).join('') + '</ul>'
+        : vazioHtml('Nenhum recebimento ainda', 'Comece um recebimento quando a compra chegar: cada matéria-prima etiquetada fica ligada ao fornecedor e à nota fiscal.')) + '</section>' +
+      '<section class="bloco"><h2 class="grupo">Contagens <span class="n">' + conts.length + '</span></h2>' +
+      (conts.length ? '<ul class="itens" id="contagens">' + conts.slice(0, 15).map(itemContagem).join('') + '</ul>'
+        : vazioHtml('Nenhuma contagem ainda', 'Na contagem, o leitor confere etiqueta por etiqueta e mostra o que não foi encontrado.')) + '</section>';
+  }
+
+  function dialogoComecarRecebimento() {
+    if (N.contagemAberta(D)) { avisar('Há uma contagem de estoque em andamento. Encerre a contagem primeiro.'); return; }
+    if (N.recebimentoAberto(D)) { ir('leitor'); return; }
+    abrir(
+      '<h2 id="dlg-titulo">Começar recebimento</h2>' +
+      '<label class="campo">Fornecedor<input type="text" id="rec-fornecedor" name="fornecedor" maxlength="40" list="rec-fornecedores" autocomplete="off">' +
+      '<datalist id="rec-fornecedores">' + N.fornecedores(D).map((f) => '<option value="' + esc(f) + '">').join('') + '</datalist></label>' +
+      '<label class="campo">Nota fiscal (opcional)<input type="text" id="rec-nota" name="nota" maxlength="20" autocomplete="off" inputmode="numeric"></label>' +
+      '<p class="dica">Depois é só ler o código de cada produto que chegou. A matéria-prima etiquetada fica ligada a este recebimento até você encerrá-lo.</p>' +
+      '<p class="erro" id="dlg-erro" role="alert" hidden></p>' +
+      '<div class="dlg-pe"><button type="button" class="bt" data-acao="fechar">Cancelar</button><button type="submit" class="bt bt-prim">Começar</button></div>',
+      (fd) => {
+        const r = N.abrirRecebimento(D, { fornecedor: fd.get('fornecedor'), nota: fd.get('nota'), responsavel: UI.S.operador }, agora());
+        if (r.erro) { erroNoDialogo(r.erro); return false; }
+        gravar();
+        UI.retorno = { ok: true, msg: 'Recebimento Nº ' + r.recebimento.n + ' aberto: ' + r.recebimento.fornecedor + '. Leia o código de cada produto que chegou.' };
+        ir('leitor');
+      });
+  }
+
+  function dialogoEncerrarRecebimento() {
+    const rec = N.recebimentoAberto(D);
+    if (!rec) return;
+    const n = N.etiquetasDoRecebimento(D, rec.id).length;
+    abrir(
+      '<h2 id="dlg-titulo">Encerrar o recebimento Nº ' + rec.n + '</h2>' +
+      '<p>' + esc(rec.fornecedor) + (rec.nota ? ' · NF ' + esc(rec.nota) : '') + '</p>' +
+      (n
+        ? '<p class="dica">Confira com a nota fiscal o que foi etiquetado:</p>' + tabelaRecebimento(rec) +
+          '<label class="campo">Observação (opcional)<textarea id="rec-obs" name="obs" rows="2" maxlength="200" placeholder="ex.: faltou uma caixa, embalagem amassada"></textarea></label>'
+        : '<p>Nenhuma etiqueta foi emitida neste recebimento. Ao encerrar, ele é desfeito.</p>') +
+      '<div class="dlg-pe"><button type="button" class="bt" data-acao="fechar">Continuar recebendo</button><button type="submit" class="bt bt-prim">Encerrar recebimento</button></div>',
+      (fd) => {
+        const r = N.fecharRecebimento(D, { obs: fd.get('obs') }, agora());
+        gravar();
+        UI.retorno = { ok: true, msg: r.vazio ? 'Recebimento desfeito: nenhuma etiqueta tinha sido emitida.' : 'Recebimento Nº ' + r.recebimento.n + ' encerrado: ' + plural(n, 'etiqueta', 'etiquetas') + ' de ' + r.recebimento.fornecedor + '.' };
+        render();
+      }, true);
+  }
+
+  function dialogoVerRecebimento(id) {
+    const r = D.recebimentos.find((x) => x.id === id);
+    if (!r) return;
+    abrir(
+      '<h2 id="dlg-titulo">Recebimento Nº ' + r.n + '</h2>' +
+      '<p><strong>' + esc(r.fornecedor) + '</strong>' + (r.nota ? ' · NF ' + esc(r.nota) : '') + '</p>' +
+      '<p class="dica">' + esc([quandoFoi(r.abertoEm), r.responsavel && 'recebido por ' + r.responsavel].filter(Boolean).join(' · ')) + '</p>' +
+      tabelaRecebimento(r) +
+      (r.obs ? '<p>Obs.: ' + esc(r.obs) + '</p>' : '') +
+      '<div class="dlg-pe"><button type="button" class="bt bt-prim" data-acao="fechar">Fechar</button></div>', null, true);
+  }
+
+  function dialogoComecarContagem() {
+    const rec = N.recebimentoAberto(D);
+    if (rec) { avisar('O recebimento Nº ' + rec.n + ' está aberto. Encerre-o antes de contar o estoque.'); return; }
+    if (N.contagemAberta(D)) { ir('leitor'); return; }
+    const locais = D.config.locais.slice();
+    D.etiquetas.forEach((e) => { if (e.status === 'ativa' && e.local && locais.indexOf(e.local) < 0) locais.push(e.local); });
+    abrir(
+      '<h2 id="dlg-titulo">Contar o estoque</h2>' +
+      '<label class="campo">Onde<select id="cont-local" name="local"><option value="">Todos os locais</option>' + locais.map((l) => '<option>' + esc(l) + '</option>').join('') + '</select></label>' +
+      '<label class="campo">O quê<select id="cont-tipo" name="tipo"><option value="">Todos os tipos</option>' + N.TIPOS.map((t) => '<option value="' + t.id + '">' + t.nome + '</option>').join('') + '</select></label>' +
+      '<p class="dica">Com o leitor, leia a etiqueta de cada item. Enquanto a contagem estiver aberta, o leitor só confere: não etiqueta nem dá baixa.</p>' +
+      '<p class="erro" id="dlg-erro" role="alert" hidden></p>' +
+      '<div class="dlg-pe"><button type="button" class="bt" data-acao="fechar">Cancelar</button><button type="submit" class="bt bt-prim">Começar a contagem</button></div>',
+      (fd) => {
+        const r = N.abrirContagem(D, { local: fd.get('local'), tipo: fd.get('tipo'), responsavel: UI.S.operador }, agora());
+        if (r.erro) { erroNoDialogo(r.erro); return false; }
+        gravar();
+        UI.S = N.sessao(UI.S.operador);
+        UI.faltamAberto = false;
+        UI.retorno = { ok: true, msg: 'Contagem Nº ' + r.contagem.n + ' começou: ' + N.escopoTexto(r.contagem) + '. Leia a etiqueta de cada item.' };
+        ir('leitor');
+      });
+  }
+
+  function dialogoEncerrarContagem() {
+    const c = N.contagemAberta(D);
+    if (!c) return;
+    const a = N.andamentoContagem(D, c);
+    const faltam = a.faltando.length;
+    abrir(
+      '<h2 id="dlg-titulo">Encerrar a contagem Nº ' + c.n + '</h2>' +
+      '<p><strong>' + a.conferidas + ' de ' + a.esperadas + ' conferidas</strong> · ' + esc(N.escopoTexto(c)) + '</p>' +
+      (faltam
+        ? '<p>' + (faltam === 1 ? 'Não foi lida:' : 'Não foram lidas:') + '</p><ul class="lista-simples">' +
+          a.faltando.map((e) => '<li><span class="mono">Nº ' + N.fmtCodigo(e.cod) + '</span> ' + esc(e.nome) + (e.local ? ' · ' + esc(e.local) : '') + ' · ' + esc(N.textoRestante(e.venceEm, agora(), e.porHora)) + '</li>').join('') + '</ul>' +
+          '<fieldset><legend>O que fazer com ' + (faltam === 1 ? 'ela' : 'elas') + '</legend><div class="opcoes">' +
+          '<label><input type="radio" name="baixar" id="cont-deixar" value="" checked>Deixar como ' + (faltam === 1 ? 'está' : 'estão') + ' (vou procurar)</label>' +
+          '<label><input type="radio" name="baixar" id="cont-baixar" value="1">Dar baixa: ' + (faltam === 1 ? 'não foi encontrada' : 'não foram encontradas') + '</label>' +
+          '</div></fieldset>'
+        : '<p>Tudo o que deveria estar ali foi lido.</p>') +
+      '<div class="dlg-pe"><button type="button" class="bt" data-acao="fechar">Continuar contando</button><button type="submit" class="bt bt-prim">Encerrar contagem</button></div>',
+      (fd) => {
+        const r = N.fecharContagem(D, { baixar: !!fd.get('baixar') }, agora());
+        gravar();
+        UI.retorno = {
+          ok: true,
+          msg: 'Contagem Nº ' + r.contagem.n + ' encerrada: ' + r.contagem.conferidas + ' de ' + r.contagem.esperadas + ' conferidas' +
+            (faltam ? '; ' + plural(faltam, 'não encontrada', 'não encontradas') + (r.contagem.baixou ? (faltam === 1 ? ' recebeu baixa.' : ' receberam baixa.') : (faltam === 1 ? ' ficou como estava.' : ' ficaram como estavam.')) : '. Tudo no lugar.'),
+        };
+        render();
       });
   }
 
@@ -858,9 +1075,9 @@
   }
 
   const ACOES = {
-    fechar: () => dlg.close(),
+    fechar: () => fecharJanela(),
     // O que já foi preenchido continua, menos o lote e a validade do fabricante, que são da embalagem do produto anterior.
-    'trocar-produto': () => { lerForm(); Object.assign(UI.r, { produtoId: '', lote: '', valOrig: '', origAberto: false }); render(); },
+    'trocar-produto': () => { lerForm(); Object.assign(UI.r, { produtoId: '', lote: '', valOrig: '', temp: '', origAberto: false }); render(); },
     'novo-produto': () => dialogoProduto(''),
     'excluir-produto': (b) => {
       // Primeiro toque arma, segundo exclui.
@@ -869,7 +1086,7 @@
       N.excluirProduto(D, b.dataset.id);
       if (UI.r.produtoId === b.dataset.id) UI.r.produtoId = '';
       gravar();
-      dlg.close();
+      fecharJanela();
       render();
       avisar((p ? p.nome : 'Produto') + ' excluído. As etiquetas já emitidas continuam no histórico.');
     },
@@ -903,6 +1120,21 @@
       }]);
     },
 
+    // Recebimento e contagem de estoque
+    'comecar-recebimento': dialogoComecarRecebimento,
+    'encerrar-recebimento': dialogoEncerrarRecebimento,
+    'comecar-contagem': dialogoComecarContagem,
+    'encerrar-contagem': dialogoEncerrarContagem,
+    'desistir-contagem': () => confirmar('Desistir desta contagem?', 'As leituras feitas até aqui serão descartadas. Os itens continuam como estão.',
+      'Desistir da contagem', () => { N.cancelarContagem(D); gravar(); UI.retorno = { ok: true, msg: 'Contagem descartada.' }; render(); }, true, 'Continuar contando'),
+    // A etiqueta lida na contagem já tinha baixa, mas o item está ali: desfaz a baixa e confere.
+    'reativar-contar': () => {
+      const e = N.desfazerBaixa(D, UI.retorno.reativar);
+      if (!e) { render(); return; }
+      gravar();
+      bipar(N.CODIGO.etiqueta(e.cod));
+    },
+
     // Leitor
     'abrir-cartela': () => { UI.cartela = true; render(); window.scrollTo(0, 0); },
     'fechar-cartela': () => { UI.cartela = false; render(); },
@@ -932,21 +1164,33 @@
 
   // ---------- janela, aviso e navegação ----------
   let aoEnviar = null;
-  function abrir(html, fn) {
+  function abrir(html, fn, larga) {
     frm.innerHTML = html;
     aoEnviar = fn;
+    dlg.classList.toggle('larga', !!larga);
     if (!dlg.open) dlg.showModal();
+  }
+  function erroNoDialogo(msg) {
+    const erro = $('#dlg-erro');
+    erro.textContent = msg;
+    erro.hidden = false;
   }
   frm.addEventListener('submit', (ev) => {
     ev.preventDefault();
     if (aoEnviar && aoEnviar(new FormData(frm)) === false) return;
-    if (dlg.open) dlg.close();
+    fecharJanela();
   });
-  dlg.addEventListener('close', () => { if (UI.aba === 'leitor') focoLeitor(); });
+  // Fechada a janela, o cursor volta na hora para o campo de leitura (sem esperar o aviso do navegador,
+  // que pode demorar): a próxima leitura do leitor tem de cair no lugar certo.
+  function fecharJanela() {
+    if (dlg.open) dlg.close();
+    if (UI.aba === 'leitor') focoLeitor();
+  }
+  dlg.addEventListener('close', () => { if (UI.aba === 'leitor') focoLeitor(); });   // fechada com Esc
 
-  function confirmar(titulo, txt, rotulo, fn, perigo) {
+  function confirmar(titulo, txt, rotulo, fn, perigo, rotuloVoltar) {
     abrir('<h2 id="dlg-titulo">' + esc(titulo) + '</h2><p>' + esc(txt) + '</p>' +
-      '<div class="dlg-pe"><button type="button" class="bt" data-acao="fechar">Cancelar</button>' +
+      '<div class="dlg-pe"><button type="button" class="bt" data-acao="fechar">' + esc(rotuloVoltar || 'Cancelar') + '</button>' +
       '<button type="submit" class="bt ' + (perigo ? 'bt-perigo' : 'bt-prim') + '">' + esc(rotulo) + '</button></div>', fn);
   }
 
@@ -965,7 +1209,7 @@
     document.documentElement.dataset.letra = D.config.letra;
   }
 
-  const TELAS = { validades: telaValidades, leitor: telaLeitor, etiquetar: telaEtiquetar, produtos: telaProdutos, perdas: telaPerdas, ajustes: telaAjustes };
+  const TELAS = { validades: telaValidades, leitor: telaLeitor, etiquetar: telaEtiquetar, produtos: telaProdutos, estoque: telaEstoque, perdas: telaPerdas, ajustes: telaAjustes };
 
   function render(foco) {
     document.querySelectorAll('.abas button').forEach((b) => {
@@ -975,6 +1219,9 @@
     });
     cabecalho();
     app.innerHTML = TELAS[UI.aba]();
+    // Em tela estreita as abas rolam para o lado: a aba aberta fica sempre à vista.
+    const abaAtual = $('.abas button.on');
+    if (abaAtual && abaAtual.scrollIntoView) abaAtual.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     if (UI.aba === 'etiquetar') atualizarPrevia();
     const alvo = foco && $(foco);
     if (alvo) alvo.focus();
@@ -992,6 +1239,10 @@
   document.addEventListener('click', (ev) => {
     const b = ev.target.closest('button');
     if (!b) {
+      // "Ainda não lidas" aberta ou fechada: anota já no clique (o aviso do navegador chega depois e uma
+      // leitura feita logo em seguida redesenharia a lista no estado antigo).
+      const resumo = ev.target.closest('summary');
+      if (resumo && resumo.parentElement.id === 'cont-faltam') UI.faltamAberto = !resumo.parentElement.open;
       // Clique fora de qualquer controle na aba Leitor: devolve o cursor ao campo de leitura.
       if (UI.aba === 'leitor' && !ev.target.closest('input, select, textarea, label, a, summary')) focoLeitor();
       return;
@@ -1007,6 +1258,7 @@
     else if (d.tipoEtq != null) { UI.tipoEtq = d.tipoEtq; render('.filtro-tipos .on'); }
     else if (d.grupo != null) { UI.grupo = d.grupo; render('.filtro-grupos .on'); }
     else if (d.editar) dialogoProduto(d.editar);
+    else if (d.verRecebimento) dialogoVerRecebimento(d.verRecebimento);
     else if (d.etiquetar) { UI.r = rascunho(UI.r); UI.r.produtoId = d.etiquetar; ir('etiquetar'); }
     else if (d.tiraOrigem) { UI.S = Object.assign({}, UI.S, { origens: UI.S.origens.filter((c) => c !== +d.tiraOrigem) }); render(); }
     else if (d.passo) {
@@ -1049,7 +1301,10 @@
   });
 
   // "toggle" não sobe na árvore: escuta na descida para lembrar se o bloco da embalagem original está aberto.
-  document.addEventListener('toggle', (ev) => { if (ev.target.id === 'etq-orig') UI.r.origAberto = ev.target.open; }, true);
+  document.addEventListener('toggle', (ev) => {
+    if (ev.target.id === 'etq-orig') UI.r.origAberto = ev.target.open;
+    else if (ev.target.id === 'cont-faltam') UI.faltamAberto = ev.target.open;
+  }, true);
 
   /*
    * O leitor de código de barras é um teclado muito rápido que termina com Enter. As teclas que

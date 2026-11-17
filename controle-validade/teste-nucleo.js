@@ -200,8 +200,8 @@ teste('planilha: uma linha por etiqueta, com campos protegidos', () => {
   const l = N.csv(D, AGORA).split('\r\n');
   assert.strictEqual(l.length, 4);
   assert.ok(l[0].startsWith('Número;Código;Produto;Tipo;Grupo;Conservação'));
-  assert.strictEqual(l[1], '000001;;Molho de tomate;Em processo;Molhos;Resfriado;"Geladeira; porta ""A""";2 kg;Ana;16/11/26 12:00;19/11/26 23:59;;;;Ativa, no prazo;;;');
-  assert.strictEqual(l[2], '000002;;Molho de tomate;Em processo;Molhos;Resfriado;;;;14/11/26 09:00;17/11/26 23:59;;;;Descartada;15/11/26 10:00;Sobra de produção;Bruno');
+  assert.strictEqual(l[1], '000001;;Molho de tomate;Em processo;Molhos;Resfriado;"Geladeira; porta ""A""";2 kg;Ana;16/11/26 12:00;19/11/26 23:59;;;;;;;Ativa, no prazo;;;');
+  assert.strictEqual(l[2], '000002;;Molho de tomate;Em processo;Molhos;Resfriado;;;;14/11/26 09:00;17/11/26 23:59;;;;;;;Descartada;15/11/26 10:00;Sobra de produção;Bruno');
 });
 
 teste('guardar e reabrir devolve os mesmos dados', () => {
@@ -255,6 +255,12 @@ teste('dados de exemplo: catálogo, painel nas quatro situações e um mês de h
   const potes = D.etiquetas.find((e) => e.nome === 'Molho de tomate pote 300 g');
   assert.strictEqual(potes.tipo, 'pa');
   assert.deepStrictEqual(potes.origens.map((c) => D.etiquetas.find((e) => e.cod === c).nome), ['Molho de tomate']);
+  // Três entregas encerradas, cada uma com a sua matéria-prima, e uma contagem do freezer.
+  assert.deepStrictEqual(D.recebimentos.map((r) => [r.n, r.fornecedor, N.resumoRecebimento(D, r).itens.map((i) => i.nome).join()]),
+    [[1, 'Frigorífico Exemplo', 'Carne moída'], [2, 'Distribuidora Exemplo', 'Farinha de trigo (aberta)'], [3, 'Laticínios Exemplo', 'Queijo muçarela fatiado']]);
+  assert.ok(D.recebimentos.every((r) => r.fechadoEm >= r.abertoEm) && !N.recebimentoAberto(D) && !N.contagemAberta(D));
+  assert.deepStrictEqual([D.contagens.length, D.contagens[0].local, D.contagens[0].esperadas, D.contagens[0].conferidas], [1, 'Freezer', 5, 5]);
+  assert.strictEqual(N.saldo(D, AGORA).reduce((t, x) => t + x.n, 0), 17);
   // O queijo aberto fica preso à validade do fabricante (3 dias), e não aos 5 dias do catálogo.
   const queijo = P.itens.find((x) => x.e.nome === 'Queijo muçarela fatiado');
   assert.strictEqual(queijo.e.limitada, true);
@@ -508,6 +514,172 @@ teste('dados da primeira versão continuam abrindo', () => {
   assert.deepStrictEqual(de.produtos.map((p) => [p.codigo, p.tipo]), [['', 'pp'], ['', 'pp'], ['A1', 'pp'], ['', 'pp']]);
   assert.deepStrictEqual([de.etiquetas[0].tipo, de.etiquetas[0].codigo, de.etiquetas[0].origens], ['pp', '', [5]]);
   assert.deepStrictEqual([de.config.letra, de.config.som, de.config.tamanho], ['normal', true, '50x30']);
+});
+
+// ---------- recebimento, contagem de estoque e saldo ----------
+
+teste('temperatura de chegada: entende o que a pessoa digita', () => {
+  assert.deepStrictEqual(N.lerTemperatura('3,5'), { ok: true, valor: 3.5 });
+  assert.deepStrictEqual(N.lerTemperatura('-18'), { ok: true, valor: -18 });
+  assert.deepStrictEqual(N.lerTemperatura(' 4.25 °C '), { ok: true, valor: 4.3 });
+  assert.deepStrictEqual(N.lerTemperatura('−2'), { ok: true, valor: -2 }, 'sinal de menos tipográfico');
+  assert.deepStrictEqual(N.lerTemperatura(''), { ok: true, valor: null });
+  assert.deepStrictEqual(N.lerTemperatura(-15), { ok: true, valor: -15 });
+  ['frio', '99', '-41', '1e3', '3,5,2', '3 graus'].forEach((v) => assert.strictEqual(N.lerTemperatura(v).ok, false, v));
+  assert.strictEqual(N.fmtTemperatura(3.5), '3,5 °C');
+  assert.strictEqual(N.fmtTemperatura(-18), '-18 °C');
+  assert.strictEqual(N.fmtTemperatura(null), '');
+});
+
+teste('recebimento: abre, liga a matéria-prima etiquetada e encerra', () => {
+  const D = fabrica();
+  assert.ok(/Informe o fornecedor/.test(N.abrirRecebimento(D, { fornecedor: ' ' }, AGORA).erro));
+  const r = N.abrirRecebimento(D, { fornecedor: ' Pescados  Sul ', nota: '123', responsavel: 'José' }, AGORA).recebimento;
+  assert.deepStrictEqual([r.id, r.n, r.fornecedor, r.nota, r.responsavel, r.fechadoEm], ['r1', 1, 'Pescados Sul', '123', 'José', 0]);
+  assert.strictEqual(N.recebimentoAberto(D), r);
+  assert.ok(/Nº 1 \(Pescados Sul\) ainda está aberto/.test(N.abrirRecebimento(D, { fornecedor: 'Outro' }, AGORA).erro));
+  // Matéria-prima entra no recebimento, com a temperatura; produto em processo, não.
+  const mp = N.emitir(D, { produtoId: 'p1', modo: 'resfriado', copias: 3, loteOrigem: 'L1', tempChegada: '3,5', qtd: '2 kg' }, AGORA).etiquetas;
+  assert.deepStrictEqual([mp[0].recebimentoId, mp[0].tempChegada], ['r1', 3.5]);
+  N.emitir(D, { produtoId: 'p1', modo: 'congelado', copias: 2, loteOrigem: 'L2', tempChegada: '-18' }, AGORA);
+  const pp = N.emitir(D, { produtoId: 'p2', modo: 'resfriado', tempChegada: '3' }, AGORA).etiquetas[0];
+  assert.deepStrictEqual([pp.recebimentoId, pp.tempChegada], ['', null]);
+  assert.ok(/temperatura de chegada é um número entre -40 e 60/.test(N.emitir(D, { produtoId: 'p1', modo: 'resfriado', tempChegada: 'frio' }, AGORA).erro));
+  // O resumo junta as etiquetas iguais: é o que se confere com a nota.
+  const resumo = N.resumoRecebimento(D, r);
+  assert.strictEqual(resumo.etiquetas, 5);
+  assert.deepStrictEqual(resumo.itens, [
+    { nome: 'Camarão cru', codigo: 'MP001', lote: 'L1', validadeOrigem: '', n: 3, qtds: ['2 kg'], temps: [3.5] },
+    { nome: 'Camarão cru', codigo: 'MP001', lote: 'L2', validadeOrigem: '', n: 2, qtds: [], temps: [-18] },
+  ]);
+  const f = N.fecharRecebimento(D, { obs: ' uma caixa  amassada ' }, AGORA + N.HORA);
+  assert.deepStrictEqual([f.recebimento.fechadoEm, f.recebimento.obs], [AGORA + N.HORA, 'uma caixa amassada']);
+  assert.strictEqual(N.recebimentoAberto(D), null);
+  assert.strictEqual(N.emitir(D, { produtoId: 'p1', modo: 'resfriado' }, AGORA).etiquetas[0].recebimentoId, '', 'depois de encerrado, não liga mais');
+  // Aberto por engano e encerrado sem etiqueta: é desfeito.
+  N.abrirRecebimento(D, { fornecedor: 'Engano' }, AGORA);
+  assert.strictEqual(N.fecharRecebimento(D, {}, AGORA).vazio, true);
+  assert.deepStrictEqual([D.recebimentos.length, D.seqRec], [1, 1]);
+  assert.ok(N.fecharRecebimento(D, {}, AGORA).erro);
+  N.abrirRecebimento(D, { fornecedor: 'Laticínios Norte' }, AGORA);
+  N.emitir(D, { produtoId: 'p1', modo: 'resfriado' }, AGORA);
+  N.fecharRecebimento(D, {}, AGORA);
+  assert.deepStrictEqual(N.fornecedores(D), ['Laticínios Norte', 'Pescados Sul']);
+  // Fornecedor, nota e temperatura vão para a planilha, e tudo sobrevive a guardar e reabrir.
+  assert.ok(/;L1;;Pescados Sul;123;3,5;;Ativa, vence em breve/.test(N.csv(D, AGORA).split('\r\n')[1]));
+  assert.deepStrictEqual(N.carregar(JSON.stringify(D)), D);
+});
+
+teste('leitor: a temperatura digitada e o recebimento aberto valem na leitura', () => {
+  const D = fabrica();
+  N.abrirRecebimento(D, { fornecedor: 'Pescados Sul' }, AGORA);
+  let r = ler(D, N.sessao('José'), ['MP001']);
+  assert.strictEqual(r.S.temp, '');
+  r = N.bipar(D, Object.assign({}, r.S, { temp: '2,5' }), 'ZZOK', AGORA);
+  assert.deepStrictEqual([r.imprimir[0].recebimentoId, r.imprimir[0].tempChegada], ['r1', 2.5]);
+  // Temperatura que não é número: avisa e não perde o que estava na tela.
+  r = ler(D, N.sessao(), ['MP001', 'MP001']);
+  r = N.bipar(D, Object.assign({}, r.S, { temp: 'gelado' }), 'ZZOK', AGORA);
+  assert.deepStrictEqual([r.ok, r.S.modo, r.S.copias], [false, 'nova', 2]);
+  assert.ok(/temperatura de chegada/.test(r.msg));
+});
+
+teste('contagem de estoque: confere pelo leitor, acha o que falta e dá baixa', () => {
+  const D = fabrica();
+  N.emitir(D, { produtoId: 'p1', modo: 'congelado', local: 'Freezer', copias: 3 }, AGORA);      // e1 a e3: matéria-prima no freezer
+  N.emitir(D, { produtoId: 'p2', modo: 'resfriado', local: 'Câmara fria', copias: 2 }, AGORA);  // e4 e e5: em processo na câmara
+  N.emitir(D, { produtoId: 'p1', modo: 'congelado' }, AGORA);                                   // e6: matéria-prima sem local
+  N.darBaixa(D, 'e3', { tipo: 'usada' }, AGORA);
+  // Recebimento e contagem não andam juntos.
+  N.abrirRecebimento(D, { fornecedor: 'X' }, AGORA);
+  assert.ok(/Encerre-o antes de contar o estoque/.test(N.abrirContagem(D, {}, AGORA).erro));
+  N.fecharRecebimento(D, {}, AGORA);
+  const c = N.abrirContagem(D, { local: 'Freezer', responsavel: 'José' }, AGORA).contagem;
+  assert.strictEqual(N.escopoTexto(c), 'Freezer');
+  assert.ok(/Já existe uma contagem/.test(N.abrirContagem(D, {}, AGORA).erro));
+  assert.ok(/contagem de estoque em andamento/.test(N.abrirRecebimento(D, { fornecedor: 'X' }, AGORA).erro));
+  assert.ok(/contagem de estoque em andamento/.test(N.emitir(D, { produtoId: 'p1', modo: 'congelado' }, AGORA).erro), 'não se etiqueta no meio da contagem');
+  let a = N.andamentoContagem(D, c);
+  assert.deepStrictEqual([a.esperadas, a.conferidas, a.faltando.map((e) => e.cod)], [2, 0, [1, 2]]);
+  let r = ler(D, N.sessao('José'), ['ZZ000001']);
+  assert.deepStrictEqual([r.ok, r.msg, r.mudou], [true, 'Conferida: Camarão cru (1 de 2).', true]);
+  r = ler(D, r.S, ['ZZ000001']);
+  assert.deepStrictEqual([r.ok, r.msg], [false, 'Camarão cru (Nº 000001) já foi conferida.']);
+  // Achada no freezer sem local, ou cadastrada em outro lugar: conta e passa a constar ali.
+  r = ler(D, r.S, ['ZZ000006']);
+  assert.strictEqual(r.msg, 'Conferida: Camarão cru (2 de 3). Local atualizado para Freezer.');
+  assert.strictEqual(D.etiquetas[5].local, 'Freezer');
+  r = ler(D, r.S, ['ZZ000004']);
+  assert.strictEqual(r.msg, 'Conferida: Recheio de camarão (3 de 4). Local atualizado para Freezer.');
+  // Achada uma que já tinha baixa: não conta sozinha, oferece desfazer.
+  r = ler(D, r.S, ['ZZ000003']);
+  assert.deepStrictEqual([r.ok, r.reativar], [false, 'e3']);
+  assert.ok(/Camarão cru \(Nº 000003\) teve baixa como usada em 16\/11/.test(r.msg));
+  // No meio da contagem o leitor só confere.
+  ['MP001', 'ZZOK', 'ZZUSO', 'ZZQ3', 'NADA'].forEach((cod) => {
+    r = ler(D, r.S, [cod]);
+    assert.ok(!r.ok && /Contagem em andamento: leia as etiquetas/.test(r.msg), cod);
+    assert.strictEqual(r.S.modo, 'livre');
+  });
+  r = ler(D, r.S, ['ZZPANALUCIA']);
+  assert.strictEqual(r.S.operador, 'Ana Lúcia');
+  a = N.andamentoContagem(D, c);
+  assert.deepStrictEqual([a.esperadas, a.conferidas, a.faltando.map((e) => e.cod)], [4, 3, [2]]);
+  const f = N.fecharContagem(D, { baixar: true }, AGORA + N.HORA);
+  assert.deepStrictEqual([f.contagem.esperadas, f.contagem.conferidas, f.contagem.faltando, f.contagem.baixou, f.contagem.fechadaEm], [4, 3, [2], true, AGORA + N.HORA]);
+  assert.deepStrictEqual([D.etiquetas[1].status, D.etiquetas[1].motivo, D.etiquetas[1].baixaPor], ['descartada', N.MOTIVO_CONTAGEM, 'José']);
+  assert.strictEqual(N.contagemAberta(D), null);
+  assert.ok(N.emitir(D, { produtoId: 'p1', modo: 'congelado' }, AGORA).etiquetas, 'encerrada a contagem, volta a etiquetar');
+  // Contagem por tipo; encerrar sem dar baixa; cancelar.
+  const c2 = N.abrirContagem(D, { tipo: 'pp' }, AGORA).contagem;
+  assert.strictEqual(N.escopoTexto(c2), 'Todos os locais · Em processo');
+  r = ler(D, N.sessao(), ['ZZ000001']);
+  assert.strictEqual(r.msg, 'Esta contagem é só de produtos do tipo Em processo. Camarão cru é Matéria-prima.');
+  r = ler(D, r.S, ['ZZ000005']);
+  assert.strictEqual(r.msg, 'Conferida: Recheio de camarão (1 de 2).', 'sem local na contagem, ninguém muda de lugar');
+  assert.strictEqual(D.etiquetas[4].local, 'Câmara fria');
+  const f2 = N.fecharContagem(D, { baixar: false }, AGORA);
+  assert.deepStrictEqual([f2.contagem.conferidas, f2.contagem.faltando, f2.contagem.baixou, D.etiquetas[3].status], [1, [4], false, 'ativa']);
+  N.abrirContagem(D, {}, AGORA);
+  assert.strictEqual(N.cancelarContagem(D), true);
+  assert.strictEqual(N.cancelarContagem(D), false);
+  assert.deepStrictEqual([D.contagens.length, D.seqCont], [2, 2]);
+  assert.ok(N.fecharContagem(D, {}, AGORA).erro);
+  // Tudo achado: nada para dar baixa, mesmo pedindo.
+  N.abrirContagem(D, { local: 'Câmara fria' }, AGORA);
+  ler(D, N.sessao(), ['ZZ000005']);
+  assert.deepStrictEqual([N.fecharContagem(D, { baixar: true }, AGORA).contagem.baixou, D.etiquetas[4].status], [false, 'ativa']);
+  assert.deepStrictEqual(N.carregar(JSON.stringify(D)), D);
+});
+
+teste('saldo: etiquetas ativas por produto, com a que vence primeiro', () => {
+  const D = fabrica();
+  N.emitir(D, { produtoId: 'p2', modo: 'resfriado', copias: 2 }, AGORA);
+  N.emitir(D, { produtoId: 'p1', modo: 'resfriado', feitoEm: em(2026, 11, 14, 9) }, AGORA);   // vence hoje
+  N.emitir(D, { produtoId: 'p1', modo: 'congelado', copias: 2 }, AGORA);
+  N.darBaixa(D, 'e5', { tipo: 'usada' }, AGORA);
+  assert.deepStrictEqual(N.saldo(D, AGORA).map((x) => [x.nome, x.codigo, x.tipo, x.n, x.sit, x.resta]),
+    [['Camarão cru', 'MP001', 'mp', 2, 'hoje', 'vence hoje'], ['Recheio de camarão', 'PP001', 'pp', 2, 'ok', 'vence em 3 dias']]);
+  assert.deepStrictEqual(N.saldo(N.vazio(), AGORA), []);
+});
+
+teste('dados da segunda versão: abrem sem recebimento nem contagem, e arquivo torto é consertado', () => {
+  const base = { produtos: [{ id: 'p1', codigo: 'A1', tipo: 'mp', nome: 'Caldo', validades: { resfriado: { n: 3, un: 'd' } } }] };
+  const v2 = N.carregar(Object.assign({ versao: 2, etiquetas: [{ cod: 1, tipo: 'mp', nome: 'Caldo', modo: 'resfriado', feitoEm: AGORA, venceEm: AGORA + N.DIA }] }, base));
+  assert.deepStrictEqual([v2.versao, v2.recebimentos, v2.contagens, v2.seqRec, v2.seqCont], [N.VERSAO, [], [], 0, 0]);
+  assert.deepStrictEqual([v2.etiquetas[0].recebimentoId, v2.etiquetas[0].tempChegada], ['', null]);
+  const torto = N.carregar(Object.assign({
+    etiquetas: [
+      { cod: 1, tipo: 'mp', nome: 'Caldo', modo: 'resfriado', feitoEm: AGORA, venceEm: AGORA + N.DIA, recebimentoId: 'r2', tempChegada: 4 },
+      { cod: 2, tipo: 'mp', nome: 'Caldo', modo: 'resfriado', feitoEm: AGORA, venceEm: AGORA + N.DIA, recebimentoId: 'r9', tempChegada: 'quente' },
+    ],
+    recebimentos: [{ n: 1, abertoEm: AGORA, fornecedor: 'A' }, { n: 2, abertoEm: AGORA, fornecedor: 'B' }, { n: 3, abertoEm: AGORA }],
+    contagens: [{ n: 1, abertaEm: AGORA, lidas: [1, 1, 'x'] }, { n: 2, abertaEm: AGORA, tipo: 'zz' }],
+  }, base));
+  assert.deepStrictEqual(torto.recebimentos.map((r) => [r.id, r.fornecedor, !!r.fechadoEm]), [['r1', 'A', true], ['r2', 'B', false]], 'só o último fica aberto; sem fornecedor não entra');
+  assert.deepStrictEqual(torto.contagens.map((c) => [c.id, c.tipo, c.lidas, !!c.fechadaEm]), [['c1', '', [1], true], ['c2', '', [], true]], 'com recebimento aberto, nenhuma contagem fica aberta');
+  assert.deepStrictEqual(torto.etiquetas.map((e) => [e.recebimentoId, e.tempChegada]), [['r2', 4], ['', null]]);
+  assert.deepStrictEqual([torto.seqRec, torto.seqCont], [2, 2]);
 });
 
 console.log(`\n${n} testes passaram.`);

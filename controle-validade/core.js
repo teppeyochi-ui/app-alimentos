@@ -10,6 +10,11 @@
  *   D.etiquetas  cada etiqueta emitida: produto (cópia do nome, tipo e código), modo, local, responsável,
  *                feitoEm, venceEm, origens (números das etiquetas de que foi feita),
  *                status ('ativa' | 'usada' | 'descartada') e dados da baixa
+ *   D.recebimentos  cada entrega: { id, n, abertoEm, fechadoEm, fornecedor, nota, responsavel, obs }.
+ *                   A matéria-prima etiquetada com um recebimento aberto fica ligada a ele (recebimentoId).
+ *   D.contagens     cada contagem de estoque: { id, n, abertaEm, fechadaEm, responsavel, local, tipo,
+ *                   lidas (números conferidos), esperadas, conferidas, faltando, baixou }.
+ * Só pode haver um recebimento ou uma contagem em aberto por vez (fechadoEm / fechadaEm igual a 0).
  * Datas e horas são guardadas em milissegundos (hora do aparelho).
  *
  * Leitor de código de barras: tudo o que o app imprime para ser lido começa com RESERVA ("ZZ"),
@@ -28,7 +33,7 @@
   const DIA = 24 * HORA;
   const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
   const MAX_COPIAS = 50;
-  const VERSAO = 2;       // formato dos dados guardados
+  const VERSAO = 3;       // formato dos dados guardados
   const RESERVA = 'ZZ';   // começo dos códigos do próprio app (etiquetas e comandos)
 
   // Etapa do produto na casa. `data` é o nome da data que vai impressa na etiqueta.
@@ -58,6 +63,9 @@
   ];
 
   const MOTIVOS = ['Vencido', 'Sobra de produção', 'Embalagem danificada', 'Aparência ou cheiro', 'Outro'];
+  // Motivo dado pelo app ao que a contagem de estoque não achou (não vai na cartela).
+  const MOTIVO_CONTAGEM = 'Não encontrado na contagem';
+  const TEMPERATURA = [-40, 60];   // faixa aceita para a temperatura de chegada, em °C
 
   // Largura × altura do rolo, em milímetros. Estes são os mais comuns; nos Ajustes dá para informar outro.
   const TAMANHOS = {
@@ -168,6 +176,10 @@
       },
       produtos: [],
       etiquetas: [],
+      seqRec: 0,
+      recebimentos: [],
+      seqCont: 0,
+      contagens: [],
     };
   }
 
@@ -185,11 +197,22 @@
     return /^[A-Z0-9._\/-]{1,20}$/.test(c) ? c : '';
   }
   const limparTipo = (v) => (TIPO[v] ? v : 'pp');
-  const limparOrigens = (v) => {
+  // Lista de números de etiqueta, sem repetir (máx, se dado, corta o excesso).
+  const limparNumeros = (v, max) => {
     const vistos = [];
-    (Array.isArray(v) ? v : []).forEach((c) => { c = Math.round(+c); if (c > 0 && vistos.indexOf(c) < 0 && vistos.length < 12) vistos.push(c); });
+    (Array.isArray(v) ? v : []).forEach((c) => { c = Math.round(+c); if (c > 0 && vistos.indexOf(c) < 0 && (!max || vistos.length < max)) vistos.push(c); });
     return vistos;
   };
+  const limparOrigens = (v) => limparNumeros(v, 12);
+
+  // Temperatura digitada ("3,5", "-18"): { ok, valor } com o número em °C, ou valor null se ficou em branco.
+  function lerTemperatura(v) {
+    if (v == null || v === '') return { ok: true, valor: null };
+    const t = typeof v === 'number' ? v : parseFloat(String(v).replace(/\s|°|c/gi, '').replace(/[−–]/g, '-').replace(',', '.'));
+    if (!isFinite(t) || t < TEMPERATURA[0] || t > TEMPERATURA[1] || (typeof v !== 'number' && !/^[\s+\-−–]?\s*\d+([.,]\d+)?\s*(°?\s*c)?\s*$/i.test(String(v)))) return { ok: false, valor: null };
+    return { ok: true, valor: Math.round(t * 10) / 10 };
+  }
+  const fmtTemperatura = (t) => (t == null ? '' : String(t).replace('.', ',') + ' °C');
 
   function limparValidade(v) {
     if (!v) return null;
@@ -222,6 +245,25 @@
     const D = vazio();
     D.exemplo = !!o.exemplo;
     D.config = limparConfig(o.config);
+    (Array.isArray(o.recebimentos) ? o.recebimentos : []).forEach((r) => {
+      if (!r || !(r.n > 0) || !(r.abertoEm > 0) || !texto(r.fornecedor)) return;
+      D.recebimentos.push({
+        id: 'r' + r.n, n: +r.n, abertoEm: +r.abertoEm, fechadoEm: r.fechadoEm > 0 ? +r.fechadoEm : 0,
+        fornecedor: texto(r.fornecedor, 40), nota: texto(r.nota, 20), responsavel: texto(r.responsavel, 40), obs: texto(r.obs, 200),
+      });
+    });
+    (Array.isArray(o.contagens) ? o.contagens : []).forEach((c) => {
+      if (!c || !(c.n > 0) || !(c.abertaEm > 0)) return;
+      D.contagens.push({
+        id: 'c' + c.n, n: +c.n, abertaEm: +c.abertaEm, fechadaEm: c.fechadaEm > 0 ? +c.fechadaEm : 0,
+        responsavel: texto(c.responsavel, 40), local: texto(c.local, 40), tipo: TIPO[c.tipo] ? c.tipo : '',
+        lidas: limparNumeros(c.lidas), esperadas: Math.max(0, Math.round(+c.esperadas) || 0), conferidas: Math.max(0, Math.round(+c.conferidas) || 0),
+        faltando: limparNumeros(c.faltando), baixou: !!c.baixou,
+      });
+    });
+    // Um só em aberto por vez: se o arquivo trouxer mais de um, vale o último.
+    D.recebimentos.forEach((r, i) => { if (!r.fechadoEm && i < D.recebimentos.length - 1) r.fechadoEm = r.abertoEm; });
+    D.contagens.forEach((c, i) => { if (!c.fechadaEm && (i < D.contagens.length - 1 || D.recebimentos.some((r) => !r.fechadoEm))) c.fechadaEm = c.abertaEm; });
     o.produtos.forEach((p) => {
       if (!p || !p.id || !texto(p.nome)) return;
       const validades = {};
@@ -240,6 +282,8 @@
         feitoEm: +e.feitoEm, venceEm: +e.venceEm, porHora: !!e.porHora, limitada: !!e.limitada,
         loteOrigem: texto(e.loteOrigem, 20), validadeOrigem: deIso(e.validadeOrigem) != null ? e.validadeOrigem : '',
         origens: limparOrigens(e.origens),
+        recebimentoId: D.recebimentos.some((r) => r.id === e.recebimentoId) ? e.recebimentoId : '',
+        tempChegada: lerTemperatura(e.tempChegada).valor,
         status,
       };
       if (status !== 'ativa') {
@@ -251,6 +295,8 @@
     });
     D.seq = Math.max(+o.seq || 0, D.etiquetas.reduce((m, e) => Math.max(m, e.cod), 0));
     D.seqProd = Math.max(+o.seqProd || 0, D.produtos.reduce((m, p) => Math.max(m, +String(p.id).replace(/\D/g, '') || 0), 0));
+    D.seqRec = Math.max(+o.seqRec || 0, D.recebimentos.reduce((m, r) => Math.max(m, r.n), 0));
+    D.seqCont = Math.max(+o.seqCont || 0, D.contagens.reduce((m, c) => Math.max(m, c.n), 0));
     return D;
   }
 
@@ -295,6 +341,7 @@
   // ---------- etiquetas ----------
   // Confere o pedido e monta a etiqueta (ainda sem número). Devolve { base, copias } ou { erro }.
   function montar(D, o, agora) {
+    if (contagemAberta(D)) return { erro: 'Há uma contagem de estoque em andamento. Encerre a contagem antes de etiquetar.' };
     const p = D.produtos.find((x) => x.id === o.produtoId);
     if (!p) return { erro: 'Escolha um produto.' };
     const validade = p.validades[o.modo];
@@ -307,6 +354,10 @@
     if (validadeOrigem && fimDoDia(deIso(validadeOrigem)) < feitoEm) {
       return { erro: 'A validade do fabricante já passou. Este produto não deve ser etiquetado.' };
     }
+    // Temperatura de chegada e recebimento são da matéria-prima.
+    const temp = lerTemperatura(p.tipo === 'mp' ? o.tempChegada : '');
+    if (!temp.ok) return { erro: 'A temperatura de chegada é um número entre ' + TEMPERATURA[0] + ' e ' + TEMPERATURA[1] + ' °C (por exemplo 3,5 ou -18).' };
+    const recebimento = p.tipo === 'mp' ? recebimentoAberto(D) : null;
     const c = calcularValidade({ feitoEm, validade, contarDiaPreparo: D.config.contarDiaPreparo, validadeOrigem });
     const origens = limparOrigens(o.origens).filter((cod) => D.etiquetas.some((e) => e.cod === cod));
     return {
@@ -315,7 +366,8 @@
         produtoId: p.id, codigo: p.codigo, tipo: p.tipo, nome: p.nome, grupo: p.grupo, modo: o.modo,
         local: texto(o.local, 40), responsavel: texto(o.responsavel, 40), qtd: texto(o.qtd, 20),
         feitoEm, venceEm: c.venceEm, porHora: c.porHora, limitada: c.limitada,
-        loteOrigem: texto(o.loteOrigem, 20), validadeOrigem, origens, status: 'ativa',
+        loteOrigem: texto(o.loteOrigem, 20), validadeOrigem, origens,
+        recebimentoId: recebimento ? recebimento.id : '', tempChegada: temp.valor, status: 'ativa',
       },
     };
   }
@@ -400,14 +452,159 @@
     const quando = (ms) => (ms ? fmtDataAno(ms) + ' ' + fmtHora(ms) : '');
     const SIT = { vencido: 'Ativa, vencida', hoje: 'Ativa, vence hoje', breve: 'Ativa, vence em breve', ok: 'Ativa, no prazo' };
     const cab = ['Número', 'Código', 'Produto', 'Tipo', 'Grupo', 'Conservação', 'Local', 'Quantidade', 'Responsável', 'Preparo', 'Validade',
-      'Lote do fabricante', 'Validade do fabricante', 'Feito com', 'Situação', 'Baixa', 'Motivo do descarte', 'Baixa feita por'];
+      'Lote do fabricante', 'Validade do fabricante', 'Fornecedor', 'Nota fiscal', 'Temperatura de chegada (°C)', 'Feito com',
+      'Situação', 'Baixa', 'Motivo do descarte', 'Baixa feita por'];
+    const rec = (e) => D.recebimentos.find((r) => r.id === e.recebimentoId) || { fornecedor: '', nota: '' };
     const corpo = D.etiquetas.slice().sort((a, b) => a.cod - b.cod).map((e) => [
       fmtCodigo(e.cod), e.codigo, e.nome, TIPO[e.tipo].nome, e.grupo, MODO[e.modo].nome, e.local, e.qtd, e.responsavel, quando(e.feitoEm), quando(e.venceEm),
-      e.loteOrigem, e.validadeOrigem ? fmtDataAno(deIso(e.validadeOrigem)) : '', e.origens.map(fmtCodigo).join(' '),
+      e.loteOrigem, e.validadeOrigem ? fmtDataAno(deIso(e.validadeOrigem)) : '', rec(e).fornecedor, rec(e).nota,
+      e.tempChegada == null ? '' : String(e.tempChegada).replace('.', ','), e.origens.map(fmtCodigo).join(' '),
       e.status === 'ativa' ? SIT[situacao(e.venceEm, agora, D.config.alertaDias)] : (e.status === 'usada' ? 'Usada' : 'Descartada'),
       quando(e.baixaEm), e.motivo || '', e.baixaPor || '',
     ]);
     return [cab].concat(corpo).map((l) => l.map(campo).join(';')).join('\r\n') + '\r\n';
+  }
+
+  // ---------- recebimento de mercadoria ----------
+  const recebimentoAberto = (D) => D.recebimentos.find((r) => !r.fechadoEm) || null;
+  const contagemAberta = (D) => D.contagens.find((c) => !c.fechadaEm) || null;
+  const etiquetasDoRecebimento = (D, id) => D.etiquetas.filter((e) => e.recebimentoId === id);
+
+  // Começa a entrega de um fornecedor: a matéria-prima etiquetada daqui até o encerramento fica ligada a ela.
+  function abrirRecebimento(D, o, agora) {
+    if (contagemAberta(D)) return { erro: 'Há uma contagem de estoque em andamento. Encerre a contagem primeiro.' };
+    const aberto = recebimentoAberto(D);
+    if (aberto) return { erro: 'O recebimento Nº ' + aberto.n + ' (' + aberto.fornecedor + ') ainda está aberto. Encerre-o primeiro.' };
+    const fornecedor = texto(o.fornecedor, 40);
+    if (!fornecedor) return { erro: 'Informe o fornecedor.' };
+    const n = ++D.seqRec;
+    const r = { id: 'r' + n, n, abertoEm: agora, fechadoEm: 0, fornecedor, nota: texto(o.nota, 20), responsavel: texto(o.responsavel, 40), obs: '' };
+    D.recebimentos.push(r);
+    return { recebimento: r };
+  }
+
+  // Encerra a entrega. Sem nenhuma etiqueta, ela é desfeita (foi aberta por engano): devolve { vazio: true }.
+  function fecharRecebimento(D, o, agora) {
+    const r = recebimentoAberto(D);
+    if (!r) return { erro: 'Não há recebimento aberto.' };
+    if (!etiquetasDoRecebimento(D, r.id).length) {
+      D.recebimentos.splice(D.recebimentos.indexOf(r), 1);
+      if (r.n === D.seqRec) D.seqRec--;
+      return { vazio: true, recebimento: r };
+    }
+    r.fechadoEm = agora;
+    r.obs = texto(o && o.obs, 200);
+    return { recebimento: r };
+  }
+
+  // O que chegou numa entrega, juntando as etiquetas iguais: é o que se confere com a nota fiscal.
+  function resumoRecebimento(D, r) {
+    const etiquetas = etiquetasDoRecebimento(D, r.id);
+    const itens = [];
+    etiquetas.forEach((e) => {
+      let g = itens.find((x) => x.nome === e.nome && x.lote === e.loteOrigem && x.validadeOrigem === e.validadeOrigem);
+      if (!g) { g = { nome: e.nome, codigo: e.codigo, lote: e.loteOrigem, validadeOrigem: e.validadeOrigem, n: 0, qtds: [], temps: [] }; itens.push(g); }
+      g.n++;
+      if (e.qtd && g.qtds.indexOf(e.qtd) < 0) g.qtds.push(e.qtd);
+      if (e.tempChegada != null && g.temps.indexOf(e.tempChegada) < 0) g.temps.push(e.tempChegada);
+    });
+    return { etiquetas: etiquetas.length, itens };
+  }
+
+  // Fornecedores já usados, do mais recente para o mais antigo (para sugerir no próximo recebimento).
+  function fornecedores(D) {
+    const vistos = [];
+    D.recebimentos.slice().reverse().forEach((r) => { if (vistos.indexOf(r.fornecedor) < 0) vistos.push(r.fornecedor); });
+    return vistos;
+  }
+
+  // ---------- contagem de estoque ----------
+  // Começa uma contagem: de tudo, ou só de um local e/ou de um tipo.
+  function abrirContagem(D, o, agora) {
+    if (contagemAberta(D)) return { erro: 'Já existe uma contagem em andamento.' };
+    const rec = recebimentoAberto(D);
+    if (rec) return { erro: 'O recebimento Nº ' + rec.n + ' (' + rec.fornecedor + ') está aberto. Encerre-o antes de contar o estoque.' };
+    const n = ++D.seqCont;
+    const c = {
+      id: 'c' + n, n, abertaEm: agora, fechadaEm: 0, responsavel: texto(o && o.responsavel, 40),
+      local: texto(o && o.local, 40), tipo: o && TIPO[o.tipo] ? o.tipo : '',
+      lidas: [], esperadas: 0, conferidas: 0, faltando: [], baixou: false,
+    };
+    D.contagens.push(c);
+    return { contagem: c };
+  }
+
+  const noEscopo = (c, e) => e.status === 'ativa' && (!c.tipo || e.tipo === c.tipo) && (!c.local || e.local === c.local);
+  const escopoTexto = (c) => [c.local || 'Todos os locais', c.tipo ? TIPO[c.tipo].nome : ''].filter(Boolean).join(' · ');
+
+  // Como está a contagem: quantas etiquetas ela espera, quantas já foram lidas e quais faltam.
+  function andamentoContagem(D, c) {
+    const esperadas = D.etiquetas.filter((e) => noEscopo(c, e));
+    const faltando = esperadas.filter((e) => c.lidas.indexOf(e.cod) < 0).sort((a, b) => a.venceEm - b.venceEm || a.cod - b.cod);
+    return { esperadas: esperadas.length, conferidas: esperadas.length - faltando.length, faltando };
+  }
+
+  /*
+   * Uma etiqueta foi lida durante a contagem. Devolve { ok, msg } e, se a etiqueta já tinha baixa,
+   * reativar: id (para a tela oferecer "desfazer a baixa e contar").
+   * Numa contagem por local, etiqueta ativa achada ali com outro local (ou sem local) é conferida
+   * e passa a constar naquele local: a contagem mostra onde as coisas de fato estão.
+   */
+  function contarEtiqueta(D, c, e) {
+    const quem = e.nome + ' (Nº ' + fmtCodigo(e.cod) + ')';
+    if (e.status !== 'ativa') {
+      return { ok: false, reativar: e.id, msg: quem + ' teve baixa como ' + (e.status === 'usada' ? 'usada' : 'descartada') + ' em ' + fmtData(e.baixaEm) + '. Se está no estoque, desfaça a baixa.' };
+    }
+    if (c.tipo && e.tipo !== c.tipo) return { ok: false, msg: 'Esta contagem é só de produtos do tipo ' + TIPO[c.tipo].nome + '. ' + e.nome + ' é ' + TIPO[e.tipo].nome + '.' };
+    if (c.lidas.indexOf(e.cod) >= 0) return { ok: false, msg: quem + ' já foi conferida.' };
+    const mudouLocal = !!c.local && e.local !== c.local;
+    if (mudouLocal) e.local = c.local;
+    c.lidas.push(e.cod);
+    const a = andamentoContagem(D, c);
+    return { ok: true, mudou: true, msg: 'Conferida: ' + e.nome + ' (' + a.conferidas + ' de ' + a.esperadas + ').' + (mudouLocal ? ' Local atualizado para ' + c.local + '.' : '') };
+  }
+
+  // Encerra a contagem. Com o.baixar, o que não foi achado recebe baixa como descartado (motivo: MOTIVO_CONTAGEM).
+  function fecharContagem(D, o, agora) {
+    const c = contagemAberta(D);
+    if (!c) return { erro: 'Não há contagem em andamento.' };
+    const a = andamentoContagem(D, c);
+    c.esperadas = a.esperadas;
+    c.conferidas = a.conferidas;
+    c.faltando = a.faltando.map((e) => e.cod);
+    c.baixou = !!(o && o.baixar) && a.faltando.length > 0;
+    c.fechadaEm = agora;
+    if (c.baixou) a.faltando.forEach((e) => darBaixa(D, e.id, { tipo: 'descartada', motivo: MOTIVO_CONTAGEM, por: c.responsavel }, agora));
+    return { contagem: c, faltando: a.faltando };
+  }
+
+  // Desiste da contagem em andamento (os locais já atualizados continuam valendo).
+  function cancelarContagem(D) {
+    const c = contagemAberta(D);
+    if (!c) return false;
+    D.contagens.splice(D.contagens.indexOf(c), 1);
+    if (c.n === D.seqCont) D.seqCont--;
+    return true;
+  }
+
+  // O que há em estoque, em etiquetas ativas por produto, com a que vence primeiro.
+  function saldo(D, agora) {
+    const mapa = {};
+    D.etiquetas.forEach((e) => {
+      if (e.status !== 'ativa') return;
+      const k = e.tipo + '|' + e.nome;
+      const g = mapa[k] || (mapa[k] = { nome: e.nome, codigo: e.codigo, tipo: e.tipo, n: 0, primeira: e });
+      g.n++;
+      if (e.venceEm < g.primeira.venceEm) g.primeira = e;
+    });
+    const ordem = (t) => TIPOS.findIndex((x) => x.id === t);
+    return Object.keys(mapa).map((k) => {
+      const g = mapa[k];
+      return {
+        nome: g.nome, codigo: g.codigo, tipo: g.tipo, n: g.n, venceEm: g.primeira.venceEm, porHora: g.primeira.porHora,
+        sit: situacao(g.primeira.venceEm, agora, D.config.alertaDias), resta: textoRestante(g.primeira.venceEm, agora, g.primeira.porHora),
+      };
+    }).sort((a, b) => ordem(a.tipo) - ordem(b.tipo) || a.nome.localeCompare(b.nome, 'pt-BR'));
   }
 
   // ---------- dados de exemplo ----------
@@ -525,13 +722,13 @@
     juntar('Frango desfiado cozido', 'resfriado', L[0], 'Ana', '4 kg', ha(2, 14, 0));
     juntar('Arroz branco cozido', 'resfriado', L[1], 'Diego', '2 cubas', ha(1, 11, 20));
     const molho = juntar('Molho de tomate', 'resfriado', L[0], 'Ana', '6 L', ha(1, 15, 45));
-    juntar('Queijo muçarela fatiado', 'resfriado', L[2], 'Carla', '1 kg', ha(0, 8, 10),
-      { loteOrigem: 'L2291', validadeOrigem: dataIso(somarDias(agora, 3)) });
+    const queijo = juntar('Queijo muçarela fatiado', 'resfriado', L[2], 'Carla', '1 kg', ha(0, 8, 10),
+      { loteOrigem: 'L2291', validadeOrigem: dataIso(somarDias(agora, 3)), tempChegada: 4.5 });
     juntar('Brigadeiro (massa)', 'resfriado', L[4], 'Diego', '3 kg', ha(0, 9, 0));
     juntar('Caldo de legumes', 'congelado', L[3], 'Ana', '8 L', ha(26, 15, 0));
-    juntar('Farinha de trigo (aberta)', 'ambiente', L[5], 'Ana', '25 kg', ha(10, 7, 30));
+    const farinha = juntar('Farinha de trigo (aberta)', 'ambiente', L[5], 'Ana', '25 kg', ha(10, 7, 30), { loteOrigem: 'F0907' });
     juntar('Feijão cozido', 'congelado', L[3], 'Diego', '5 kg', ha(5, 13, 0));
-    const carne = juntar('Carne moída', 'congelado', L[3], 'Bruno', '6 kg', ha(12, 10, 0));
+    const carne = juntar('Carne moída', 'congelado', L[3], 'Bruno', '6 kg', ha(12, 10, 0), { loteOrigem: '48213', tempChegada: -15 });
     juntar('Filé de tilápia porcionado', 'congelado', L[3], 'Bruno', '10 kg', ha(20, 16, 0));
     // Acabados, cada um ligado à etiqueta de que foi feito (a origem entra depois que os números existem).
     const potes = juntar('Molho de tomate pote 300 g', 'resfriado', L[0], 'Ana', '18 potes', ha(1, 16, 30));
@@ -545,6 +742,21 @@
     });
     potes.origens = [molho.cod];
     lasanha.origens = [carne.cod];
+
+    // Três entregas já encerradas, cada matéria-prima ligada à sua (nomes de fornecedor inventados).
+    [[carne, 'Frigorífico Exemplo', '18427', ''], [farinha, 'Distribuidora Exemplo', '90412', ''], [queijo, 'Laticínios Exemplo', '5530', 'Uma caixa com a tampa amassada.']]
+      .forEach((l) => {
+        const e = l[0];
+        const n = ++D.seqRec;
+        D.recebimentos.push({ id: 'r' + n, n, abertoEm: e.feitoEm - 10 * 60e3, fechadoEm: Math.min(e.feitoEm + 15 * 60e3, agora), fornecedor: l[1], nota: l[2], responsavel: e.responsavel, obs: l[3] });
+        e.recebimentoId = 'r' + n;
+      });
+    // E uma contagem do freezer, há três dias, com tudo no lugar.
+    const noFreezer = D.etiquetas.filter((e) => e.local === L[3] && e.feitoEm < ha(3, 17, 0)).map((e) => e.cod);
+    D.contagens.push({
+      id: 'c1', n: ++D.seqCont, abertaEm: ha(3, 17, 0), fechadaEm: ha(3, 17, 0) + 8 * 60e3, responsavel: 'Diego', local: L[3], tipo: '',
+      lidas: noFreezer, esperadas: noFreezer.length, conferidas: noFreezer.length, faltando: [], baixou: false,
+    });
     return D;
   }
 
@@ -650,6 +862,14 @@
     if (L.tipo === 'vazio') return { S, ok: true, msg: '' };
     if (L.tipo === 'erro') return erro(L.msg);
     if (L.tipo === 'teste') return bom(com(), 'Etiqueta de teste lida. Impressora e leitor estão funcionando.');
+
+    // Contagem de estoque em andamento: o leitor só confere etiquetas (e troca quem está trabalhando).
+    const contagem = contagemAberta(D);
+    if (contagem) {
+      if (L.tipo === 'etiqueta') return Object.assign({ S: livre() }, contarEtiqueta(D, contagem, L.etiqueta));
+      if (L.tipo === 'comando' && L.comando === 'pessoa') return bom(sessao(L.valor), 'Quem está trabalhando: ' + L.valor);
+      return { S: livre(), ok: false, msg: 'Contagem em andamento: leia as etiquetas dos itens. Para etiquetar ou dar baixa, encerre a contagem.' };
+    }
     if (L.tipo === 'desconhecido') return { S: com({ desconhecido: L.codigo }), ok: false, msg: 'Código não cadastrado: ' + L.codigo };
 
     const produto = S.modo === 'nova' ? D.produtos.find((x) => x.id === S.produtoId) : null;
@@ -666,7 +886,7 @@
       }
       return bom({
         modo: 'nova', operador: S.operador, desconhecido: '', produtoId: p.id, conserv: modosDoProduto(p)[0].id,
-        copias: 1, local: '', qtd: '', lote: '', valOrig: '', origens: [],
+        copias: 1, local: '', qtd: '', lote: '', valOrig: '', temp: '', origens: [],
       }, p.nome);
     }
 
@@ -701,7 +921,7 @@
       if (c === 'ok') {
         const r = emitir(D, {
           produtoId: produto.id, modo: S.conserv, local: S.local, responsavel: S.operador, qtd: S.qtd, copias: S.copias,
-          loteOrigem: S.lote, validadeOrigem: S.valOrig, origens: S.origens,
+          loteOrigem: S.lote, validadeOrigem: S.valOrig, tempChegada: S.temp, origens: S.origens,
         }, agora);
         if (r.erro) return erro(r.erro);
         const n = r.etiquetas.length;
@@ -751,6 +971,9 @@
     CHAVE, VERSAO, RESERVA, HORA, DIA, MAX_COPIAS, MODOS, MODO, TIPOS, TIPO, SITUACOES, MOTIVOS, TAMANHOS, LARGURA, ALTURA,
     limparTamanho, medidas, limparCodigo, code128, verificador128, chave, CODIGO, plural,
     interpretar, sessao, bipar, cartela,
+    MOTIVO_CONTAGEM, TEMPERATURA, lerTemperatura, fmtTemperatura,
+    recebimentoAberto, etiquetasDoRecebimento, abrirRecebimento, fecharRecebimento, resumoRecebimento, fornecedores,
+    contagemAberta, abrirContagem, andamentoContagem, escopoTexto, contarEtiqueta, fecharContagem, cancelarContagem, saldo,
     inicioDoDia, fimDoDia, somarDias, diasEntre, dataIso, deIso,
     fmtData, fmtDataAno, fmtHora, diaSemana, fmtCodigo, fmtValidade,
     calcularValidade, situacao, textoRestante,

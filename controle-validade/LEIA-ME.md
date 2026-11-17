@@ -21,9 +21,10 @@ mas os dados ficam só no aparelho. O que falta para virar produto está em
 | Aba | O que faz |
 |---|---|
 | Validades | Painel das etiquetas ativas em quatro situações: vencidos, vencem hoje, vencem em breve e no prazo. Busca (produto, código, local, número), filtros por tipo e por local, baixa como **Usado** ou **Descartar** (com motivo) e reimpressão. Atualiza sozinho com o relógio. |
-| Leitor | A tela de quem opera. Lê o código do produto e imprime as etiquetas; lê uma etiqueta já impressa e dá baixa. Letras e botões grandes, uma coisa por vez, som de confirmação. Daqui sai a **cartela de códigos**. |
+| Leitor | A tela de quem opera. Lê o código do produto e imprime as etiquetas; lê uma etiqueta já impressa e dá baixa; recebe mercadoria e conta o estoque. Letras e botões grandes, uma coisa por vez, som de confirmação. Daqui sai a **cartela de códigos**. |
 | Etiquetar | O mesmo que o Leitor faz, tocando na tela: produto, conservação, local, responsável, quantidade, data retroativa. |
 | Produtos | Catálogo por tipo (matéria-prima, em processo, produto acabado). Cada produto tem o **código da casa**, o grupo e a validade em até quatro modos: resfriado, congelado, descongelado e ambiente, em dias ou horas. |
+| Estoque | O que há em estoque (etiquetas ativas por produto, com a que vence primeiro), o histórico dos **recebimentos** e das **contagens**. Daqui se começa uma contagem. |
 | Perdas | Etiquetas emitidas, usadas e descartadas em 7 ou 30 dias, aproveitamento, descartes por motivo, produtos mais descartados e as últimas baixas. Exporta planilha (CSV). |
 | Ajustes | Nome da casa, impressora e tamanho da etiqueta, tamanho das letras, som, dias de alerta, regra de contagem dos dias, locais, equipe, cópia de segurança. |
 
@@ -38,13 +39,17 @@ aperta Enter. O app entende três coisas e reage a cada uma:
 | Etiqueta já impressa pelo app | Abre a etiqueta para dar baixa como usada ou descartada. |
 | Comando da cartela (IMPRIMIR, quantidade, conservação…) | Vale para o que está na tela. |
 
-**Recebimento (matéria-prima).** Chegou a compra:
+**Entrada de matéria-prima.** Chegou a compra:
 
 1. Ler o código do produto. A tela mostra o nome em letras grandes e quando vence.
 2. Ler de novo o mesmo código soma uma etiqueta; ou ler o número na cartela (1, 2, 3… 30).
-3. Opcional: ler a conservação (resfriado, congelado…), digitar o lote e a
-   validade do fabricante. A etiqueta nunca passa da validade do fabricante.
+3. Opcional: ler a conservação (resfriado, congelado…), digitar o lote, a
+   validade do fabricante e a temperatura de chegada. A etiqueta nunca passa
+   da validade do fabricante.
 4. Ler **IMPRIMIR**. As etiquetas saem, cada uma com o seu número em barras.
+
+Para guardar de quem veio cada coisa, a entrada é feita dentro de um
+[recebimento](#recebimento-de-mercadoria).
 
 **Produto em processo e produto acabado.** Igual, com um passo a mais que é
 opcional: depois de ler o código do produto, ler a etiqueta do que foi usado
@@ -66,6 +71,48 @@ Detalhes que evitam erro:
   cartela) e vale para as etiquetas e baixas seguintes.
 
 ![Baixa de uma etiqueta lida](capturas/14-leitor-baixa.png)
+
+### Recebimento de mercadoria
+
+![Recebimento aberto](capturas/18-recebimento.png)
+
+1. **Começar recebimento** (na aba Leitor ou na aba Estoque): informar o
+   fornecedor e, se houver, o número da nota fiscal. É a única digitação.
+2. Ler o código de cada produto que chegou, como na entrada normal. Toda
+   matéria-prima etiquetada com o recebimento aberto fica ligada a ele.
+3. **Encerrar recebimento.** A tela mostra o que foi etiquetado (produto,
+   número de etiquetas, quantidade, lote, validade do fabricante,
+   temperatura) para conferir com a nota, e aceita uma observação (faltou
+   uma caixa, embalagem amassada).
+
+Depois disso, qualquer etiqueta daquela matéria-prima mostra o fornecedor, a
+nota, o lote e a temperatura de chegada: na leitura, no painel e na planilha.
+Recebimento aberto por engano e encerrado sem etiqueta é desfeito. Produto em
+processo ou acabado feito durante o recebimento não entra nele.
+
+### Contagem de estoque
+
+![Contagem em andamento](capturas/20-contagem.png)
+
+1. Na aba Estoque, **Contar o estoque**: de tudo, ou só de um local (o
+   freezer, a câmara) e/ou de um tipo.
+2. Ler a etiqueta de cada item. A tela mostra quantas já foram conferidas e,
+   se pedir, quais ainda faltam.
+3. **Encerrar contagem.** O que não foi lido aparece como não encontrado, e a
+   pessoa escolhe: deixar como está (vai procurar) ou dar baixa. A baixa
+   entra nas Perdas com o motivo "Não encontrado na contagem".
+
+O que a contagem resolve sozinha:
+
+- **Item fora do lugar:** numa contagem por local, etiqueta ativa achada ali
+  com outro local (ou sem local) é conferida e passa a constar naquele local.
+- **Item que tinha baixa mas está ali:** o app avisa e oferece desfazer a
+  baixa e contar.
+- **Leitura repetida:** avisa que já foi conferida, sem contar duas vezes.
+
+Enquanto a contagem está aberta o leitor só confere: não etiqueta nem dá
+baixa. Recebimento e contagem não ficam abertos ao mesmo tempo. Os dois
+ficam guardados, então fechar o app no meio não perde nada.
 
 ### Cartela de códigos
 
@@ -167,17 +214,22 @@ abre direto na tela do leitor.
    cadastrar produto por produto.
 2. **Contas e dados na nuvem.** Hoje cada aparelho tem os seus dados. Com um
    banco (o Supabase já usado no Diário da Linha Skin serve), o computador da
-   recepção e o do escritório enxergam o mesmo painel, com login por pessoa.
-3. **Recebimento completo:** fornecedor, nota fiscal, temperatura de chegada
-   e conferência do que foi comprado.
-4. **Baixa parcial e saldo:** hoje a etiqueta é usada inteira ou descartada
-   inteira; com peso ou unidades, o app passa a saber o estoque.
-5. **Impressão direta em ZPL** (a linguagem da Zebra), sem passar pela janela
+   recepção e o do escritório enxergam o mesmo painel, com login.
+3. **Pedido de compra:** hoje o recebimento registra o que chegou; com o
+   pedido cadastrado, o app compararia sozinho o comprado com o recebido.
+4. **Baixa parcial e saldo em peso:** hoje a etiqueta é usada inteira ou
+   descartada inteira, e o estoque é contado em etiquetas; com peso ou
+   unidades, o app passa a saber quanto há de cada produto.
+5. **Controle de produção:** plano do dia (o que produzir e quanto) e
+   rendimento (quanto de matéria-prima virou produto).
+6. **Leitura pela câmera do celular** (com QR code na etiqueta), para dar
+   baixa sem o leitor.
+7. **Impressão direta em ZPL** (a linguagem da Zebra), sem passar pela janela
    do navegador e mais rápida em lote.
-6. **Alertas fora do app:** notificação ou e-mail de manhã com o que vence no dia.
-7. **Mais dados na etiqueta e no catálogo:** alergênicos, ingredientes, peso
+8. **Alertas fora do app:** notificação ou e-mail de manhã com o que vence no dia.
+9. **Mais dados na etiqueta e no catálogo:** alergênicos, ingredientes, peso
    líquido, modelos de etiqueta por tipo de produto.
-8. **Perdas em peso e em dinheiro** (hoje o relatório conta etiquetas).
+10. **Perdas em peso e em dinheiro** (hoje o relatório conta etiquetas).
 
 ## Como está montado
 
@@ -186,22 +238,23 @@ outros apps estáticos deste repositório.
 
 | Arquivo | Papel |
 |---|---|
-| `core.js` | Regras, sem tela: validade, situação, baixas, relatório, planilha, código de barras (Code 128), a lógica do leitor passo a passo, a cartela e os dados de exemplo. Roda também no Node. |
+| `core.js` | Regras, sem tela: validade, situação, baixas, recebimento, contagem de estoque, saldo, relatório, planilha, código de barras (Code 128), a lógica do leitor passo a passo, a cartela e os dados de exemplo. Roda também no Node. |
 | `app.js` | Telas e eventos. |
 | `styles.css` | Visual (tema claro e escuro), a etiqueta e a cartela, na tela e no papel. |
 | `sw.js`, `manifest.webmanifest`, `icones/` | Instalação e uso sem internet. |
 
 Os dados ficam no `localStorage` do aparelho, na chave `validade_em_dia_v1`:
-ajustes, catálogo e etiquetas. Cada etiqueta guarda produto (nome, código e
-tipo), conservação, local, responsável, entrada ou preparo, validade, as
-etiquetas de origem e, depois da baixa, se foi usada ou descartada, quando,
-por quem e por quê.
+ajustes, catálogo, etiquetas, recebimentos e contagens. Cada etiqueta guarda
+produto (nome, código e tipo), conservação, local, responsável, entrada ou
+preparo, validade, as etiquetas de origem, o recebimento e a temperatura de
+chegada (na matéria-prima) e, depois da baixa, se foi usada ou descartada,
+quando, por quem e por quê.
 
 ## Testes
 
 ```bash
-node teste-nucleo.js                 # regras, código de barras e leitor (30 testes, sem navegador)
-node teste-interface.js              # telas no Chromium, com a data fixa (25 testes)
+node teste-nucleo.js                 # regras, código de barras, leitor, recebimento e contagem (36 testes, sem navegador)
+node teste-interface.js              # telas no Chromium, com a data fixa (30 testes)
 node teste-interface.js --capturas   # o mesmo, regravando as imagens de capturas/
 ```
 

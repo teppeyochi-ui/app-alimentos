@@ -678,8 +678,253 @@ teste('dados da segunda versão: abrem sem recebimento nem contagem, e arquivo t
   }, base));
   assert.deepStrictEqual(torto.recebimentos.map((r) => [r.id, r.fornecedor, !!r.fechadoEm]), [['r1', 'A', true], ['r2', 'B', false]], 'só o último fica aberto; sem fornecedor não entra');
   assert.deepStrictEqual(torto.contagens.map((c) => [c.id, c.tipo, c.lidas, !!c.fechadaEm]), [['c1', '', [1], true], ['c2', '', [], true]], 'com recebimento aberto, nenhuma contagem fica aberta');
-  assert.deepStrictEqual(torto.etiquetas.map((e) => [e.recebimentoId, e.tempChegada]), [['r2', 4], ['', null]]);
+  assert.deepStrictEqual(torto.etiquetas.map((e) => [e.recebimentoId, e.tempChegada]), [['r2', 4], ['r9', null]], 'a referência fica: com a nuvem, o recebimento pode chegar depois');
+  assert.strictEqual(N.carregar(Object.assign({ etiquetas: [{ cod: 1, nome: 'Caldo', modo: 'resfriado', feitoEm: AGORA, venceEm: AGORA + N.DIA, recebimentoId: 'qualquer coisa' }] }, base)).etiquetas[0].recebimentoId, '');
   assert.deepStrictEqual([torto.seqRec, torto.seqCont], [2, 2]);
+});
+
+// ---------- nuvem: vários aparelhos, os mesmos dados ----------
+
+/*
+ * Servidor de mentira com a mesma regra do banco de verdade (supabase/instalar.sql): uma linha por
+ * registro; os campos recebidos são juntados aos que já existem; cada escrita ganha um carimbo crescente.
+ */
+function servidorFalso() {
+  const linhas = {};
+  const contadores = {};
+  let relogio = 0;
+  const carimbo = () => '2026-11-16T15:00:00.' + String(++relogio).padStart(6, '0') + 'Z';
+  return {
+    linhas,
+    enviar(mudancas) {
+      mudancas.forEach((m) => {
+        const k = m.tipo + '|' + m.id;
+        const l = linhas[k] || (linhas[k] = { tipo: m.tipo, id: m.id, dados: {}, apagado: false });
+        Object.assign(l.dados, JSON.parse(JSON.stringify(m.campos)));
+        if (m.apagado != null) l.apagado = m.apagado;
+        l.atualizado_em = carimbo();
+      });
+    },
+    receber(desde) {
+      return Object.keys(linhas).map((k) => linhas[k]).filter((l) => !desde || l.atualizado_em > desde)
+        .sort((a, b) => (a.atualizado_em < b.atualizado_em ? -1 : 1)).map((l) => JSON.parse(JSON.stringify(l)));
+    },
+    reservar(contador, quantos, minimo) {
+      const primeiro = Math.max(contadores[contador] || 1, minimo || 1);
+      contadores[contador] = primeiro + quantos;
+      return primeiro;
+    },
+  };
+}
+
+// Um aparelho ligado à nuvem: os dados, o retrato e as três conversas com o servidor.
+function aparelho(srv, nome, D) {
+  D = D || N.vazio();
+  N.nuvemLigar(D, { casa: 'casa-1', email: 'casa@exemplo.com', aparelho: nome });
+  const A = { D, retrato: N.nuvemRetrato(D) };
+  A.guardar = () => N.nuvemAnotar(A.D, A.retrato);          // o que o app faz a cada mudança
+  A.sincronizar = () => {
+    N.nuvemAReservar(A.D).forEach((r) => N.nuvemReservado(A.D, r.contador, srv.reservar(r.contador, r.quantos, r.minimo), r.quantos));
+    A.guardar();
+    while (A.D.nuvem.fila.length) { const lote = N.nuvemLote(A.D); srv.enviar(lote.mudancas); N.nuvemEnviado(A.D, lote.n); }
+    return N.nuvemReceber(A.D, A.retrato, srv.receber(A.D.nuvem.cursor));
+  };
+  return A;
+}
+const semNuvem = (D) => { const c = JSON.parse(JSON.stringify(D)); delete c.nuvem; c.aparelho = ''; c.seq = c.seqProd = c.seqRec = c.seqCont = 0; return c; };
+
+teste('nuvem: numeração por faixas reservadas, sem repetir entre aparelhos', () => {
+  const srv = servidorFalso();
+  const A = aparelho(srv, 'A');
+  assert.strictEqual(N.disponiveis(A.D, 'etiqueta'), 0);
+  assert.strictEqual(N.salvarProduto(A.D, { nome: 'Caldo', validades: { resfriado: { n: 3, un: 'd' } } }).erro, N.SEM_NUMEROS, 'sem faixa reservada, não cria');
+  assert.deepStrictEqual(N.nuvemAReservar(A.D).map((r) => [r.contador, r.quantos, r.minimo]), [['etiqueta', 1000, 1], ['produto', 100, 1], ['recebimento', 50, 1], ['contagem', 50, 1]]);
+  A.sincronizar();
+  assert.deepStrictEqual(A.D.nuvem.reservas, { etiqueta: [[1, 1000]], produto: [[1, 100]], recebimento: [[1, 50]], contagem: [[1, 50]] });
+  assert.deepStrictEqual(N.nuvemAReservar(A.D), [], 'com a faixa cheia não pede mais');
+  const B = aparelho(srv, 'B');
+  B.sincronizar();
+  assert.deepStrictEqual(B.D.nuvem.reservas.etiqueta, [[1001, 2000]]);
+  const p = N.salvarProduto(A.D, { codigo: 'MP1', tipo: 'mp', nome: 'Camarão', validades: { resfriado: { n: 2, un: 'd' } } }).produto;
+  assert.strictEqual(p.id, 'p1');
+  assert.deepStrictEqual(N.espiar(A.D, 'etiqueta', 3), [1, 2, 3]);
+  assert.deepStrictEqual(N.emitir(A.D, { produtoId: 'p1', modo: 'resfriado', copias: 3 }, AGORA).etiquetas.map((e) => e.cod), [1, 2, 3]);
+  A.sincronizar();
+  B.sincronizar();
+  assert.deepStrictEqual(N.emitir(B.D, { produtoId: 'p1', modo: 'resfriado', copias: 2 }, AGORA).etiquetas.map((e) => e.cod), [1001, 1002], 'cada aparelho na sua faixa');
+  assert.strictEqual(N.salvarProduto(B.D, { nome: 'Outro', validades: { resfriado: { n: 2, un: 'd' } } }).produto.id, 'p101');
+  // Faixa quase no fim: pede outra; acabando no meio de um pedido, o pedido inteiro é recusado.
+  A.D.nuvem.reservas.etiqueta = [[998, 1000]];
+  assert.deepStrictEqual(N.nuvemAReservar(A.D).map((r) => r.contador), ['etiqueta']);
+  assert.strictEqual(N.emitir(A.D, { produtoId: 'p1', modo: 'resfriado', copias: 4 }, AGORA).erro, N.SEM_NUMEROS);
+  assert.deepStrictEqual(N.espiar(A.D, 'etiqueta', 4), []);
+  A.sincronizar();
+  assert.deepStrictEqual(A.D.nuvem.reservas.etiqueta, [[998, 1000], [2001, 3000]]);
+  assert.deepStrictEqual(N.emitir(A.D, { produtoId: 'p1', modo: 'resfriado', copias: 4 }, AGORA).etiquetas.map((e) => e.cod), [998, 999, 1000, 2001], 'passa de uma faixa para a outra');
+  // Sem nuvem tudo continua como antes.
+  const L = N.vazio();
+  assert.strictEqual(N.disponiveis(L, 'etiqueta'), Infinity);
+  assert.deepStrictEqual(N.espiar(L, 'etiqueta', 2), [1, 2]);
+  assert.deepStrictEqual(N.nuvemAReservar(L), []);
+});
+
+teste('nuvem: o que um aparelho faz aparece no outro', () => {
+  const srv = servidorFalso();
+  const A = aparelho(srv, 'A');
+  const B = aparelho(srv, 'B');
+  A.sincronizar();
+  B.sincronizar();
+  A.D.config.casa = 'Cozinha da Vó';
+  A.D.config.equipe = ['José', 'Ana'];
+  A.D.config.tamanho = '100x50';           // ajuste do aparelho: não viaja
+  N.salvarProduto(A.D, { codigo: 'MP1', tipo: 'mp', nome: 'Camarão', validades: { resfriado: { n: 2, un: 'd' } } });
+  N.abrirRecebimento(A.D, { fornecedor: 'Pescados Sul', nota: '77' }, AGORA);
+  N.emitir(A.D, { produtoId: 'p1', modo: 'resfriado', copias: 2, tempChegada: '3,5', local: 'Câmara fria' }, AGORA);
+  assert.strictEqual(A.guardar(), 5, 'ajustes, produto, recebimento e duas etiquetas');
+  assert.strictEqual(A.guardar(), 0, 'nada mudou desde a última anotação');
+  assert.deepStrictEqual(A.D.nuvem.fila.map((m) => m.tipo + ' ' + m.id), ['config config', 'produto p1', 'etiqueta e1', 'etiqueta e2', 'recebimento r1']);
+  A.sincronizar();
+  assert.strictEqual(A.D.nuvem.fila.length, 0);
+  assert.strictEqual(B.sincronizar(), true);
+  assert.deepStrictEqual([B.D.config.casa, B.D.config.equipe, B.D.config.tamanho], ['Cozinha da Vó', ['José', 'Ana'], '60x40']);
+  assert.deepStrictEqual(semNuvem(B.D).etiquetas, semNuvem(A.D).etiquetas);
+  assert.deepStrictEqual(semNuvem(B.D).produtos, semNuvem(A.D).produtos);
+  assert.strictEqual(B.sincronizar(), false, 'receber de novo o que já tem não muda nada');
+  assert.strictEqual(B.D.nuvem.fila.length, 0, 'e não gera mudança de volta');
+  // O recebimento aberto é do aparelho A: B vê no histórico, mas não entra nele.
+  assert.deepStrictEqual([B.D.recebimentos[0].aparelho, N.recebimentoAberto(B.D), N.recebimentoAberto(A.D).id], ['A', null, 'r1']);
+  assert.strictEqual(N.emitir(B.D, { produtoId: 'p1', modo: 'resfriado' }, AGORA).etiquetas[0].recebimentoId, '');
+  // B dá baixa numa etiqueta e muda um prazo; A recebe as duas coisas.
+  N.darBaixa(B.D, 'e1', { tipo: 'descartada', motivo: 'Vencido', por: 'Ana' }, AGORA + N.HORA);
+  N.salvarProduto(B.D, { id: 'p1', codigo: 'MP1', tipo: 'mp', nome: 'Camarão', validades: { resfriado: { n: 3, un: 'd' } } });
+  B.guardar();
+  assert.deepStrictEqual(B.D.nuvem.fila.find((m) => m.id === 'e1').campos, { status: 'descartada', baixaEm: AGORA + N.HORA, baixaPor: 'Ana', motivo: 'Vencido' }, 'só os campos que mudaram');
+  B.sincronizar();
+  A.sincronizar();
+  assert.deepStrictEqual([A.D.etiquetas[0].status, A.D.etiquetas[0].motivo, A.D.produtos[0].validades.resfriado.n], ['descartada', 'Vencido', 3]);
+  // A desfaz a baixa: os campos da baixa somem também em B.
+  N.desfazerBaixa(A.D, 'e1');
+  A.guardar();
+  assert.deepStrictEqual(A.D.nuvem.fila[0].campos, { status: 'ativa', baixaEm: null, baixaPor: null, motivo: null });
+  A.sincronizar();
+  B.sincronizar();
+  assert.deepStrictEqual(B.D.etiquetas[0], A.D.etiquetas[0]);
+  assert.strictEqual('baixaEm' in B.D.etiquetas[0], false);
+  // Produto excluído em A some em B; as etiquetas dele continuam.
+  N.excluirProduto(A.D, 'p1');
+  A.sincronizar();
+  B.sincronizar();
+  assert.deepStrictEqual([B.D.produtos.length, B.D.etiquetas.length], [0, 3]);
+  assert.strictEqual(srv.linhas['produto|p1'].apagado, true);
+});
+
+teste('nuvem: mudanças em campos diferentes da mesma etiqueta não se atropelam', () => {
+  const srv = servidorFalso();
+  const A = aparelho(srv, 'A');
+  const B = aparelho(srv, 'B');
+  A.sincronizar();
+  N.salvarProduto(A.D, { codigo: 'MP1', tipo: 'mp', nome: 'Camarão', validades: { congelado: { n: 90, un: 'd' } } });
+  N.emitir(A.D, { produtoId: 'p1', modo: 'congelado', local: 'Câmara fria' }, AGORA);
+  A.sincronizar();
+  B.sincronizar();
+  // Sem internet: A conta o freezer e acha a etiqueta lá (muda o local); B dá baixa nela.
+  N.abrirContagem(A.D, { local: 'Freezer' }, AGORA);
+  N.contarEtiqueta(A.D, N.contagemAberta(A.D), A.D.etiquetas[0]);
+  A.guardar();
+  N.darBaixa(B.D, 'e1', { tipo: 'usada', por: 'Ana' }, AGORA + N.HORA);
+  B.guardar();
+  assert.deepStrictEqual(A.D.nuvem.fila.find((m) => m.id === 'e1').campos, { local: 'Freezer' });
+  B.sincronizar();
+  A.sincronizar();
+  B.sincronizar();
+  assert.deepStrictEqual([A.D.etiquetas[0].local, A.D.etiquetas[0].status, A.D.etiquetas[0].baixaPor], ['Freezer', 'usada', 'Ana'], 'ficam as duas mudanças');
+  assert.deepStrictEqual(B.D.etiquetas[0], A.D.etiquetas[0]);
+  // A contagem de A aparece em B, mas não trava o trabalho de B.
+  assert.deepStrictEqual([B.D.contagens[0].aparelho, N.contagemAberta(B.D), !!N.contagemAberta(A.D)], ['A', null, true]);
+  assert.ok(N.emitir(B.D, { produtoId: 'p1', modo: 'congelado' }, AGORA).etiquetas);
+  assert.ok(/contagem de estoque em andamento/.test(N.emitir(A.D, { produtoId: 'p1', modo: 'congelado' }, AGORA).erro));
+  // No mesmo campo, vale quem chegou por último ao servidor.
+  A.D.etiquetas[0].local = 'Geladeira';
+  B.D.etiquetas[0].local = 'Estoque seco';
+  A.sincronizar();
+  B.sincronizar();
+  A.sincronizar();
+  assert.deepStrictEqual([A.D.etiquetas[0].local, B.D.etiquetas[0].local], ['Estoque seco', 'Estoque seco']);
+});
+
+teste('nuvem: o que ainda não foi enviado continua valendo quando chegam novidades', () => {
+  const srv = servidorFalso();
+  const A = aparelho(srv, 'A');
+  const B = aparelho(srv, 'B');
+  A.sincronizar();
+  N.salvarProduto(A.D, { codigo: 'MP1', tipo: 'mp', nome: 'Camarão', validades: { resfriado: { n: 2, un: 'd' } } });
+  N.emitir(A.D, { produtoId: 'p1', modo: 'resfriado', local: 'Câmara fria', qtd: '1 kg' }, AGORA);
+  A.sincronizar();
+  B.sincronizar();
+  // B muda a quantidade e envia; A, sem conseguir enviar, dá baixa e depois recebe a novidade de B.
+  B.D.etiquetas[0].qtd = '2 kg';
+  B.sincronizar();
+  N.darBaixa(A.D, 'e1', { tipo: 'usada', por: 'José' }, AGORA);
+  A.guardar();
+  assert.strictEqual(N.nuvemReceber(A.D, A.retrato, srv.receber(A.D.nuvem.cursor)), true);
+  assert.deepStrictEqual([A.D.etiquetas[0].qtd, A.D.etiquetas[0].status, A.D.etiquetas[0].baixaPor], ['2 kg', 'usada', 'José'], 'a baixa local não se perde');
+  assert.strictEqual(A.guardar(), 0, 'e não vira mudança repetida');
+  assert.strictEqual(A.D.nuvem.fila.length, 1);
+  // Enviar em pedaços: o que entra na fila durante o envio fica para a próxima.
+  const lote = N.nuvemLote(A.D, 1);
+  N.darBaixa(A.D, 'e1', { tipo: 'descartada', motivo: 'Outro' }, AGORA) || N.desfazerBaixa(A.D, 'e1');
+  A.guardar();
+  srv.enviar(lote.mudancas);
+  N.nuvemEnviado(A.D, lote.n);
+  assert.strictEqual(A.D.nuvem.fila.length, 1);
+  A.sincronizar();
+  B.sincronizar();
+  assert.deepStrictEqual(B.D.etiquetas[0], A.D.etiquetas[0]);
+  // Várias mudanças no mesmo registro viajam juntas.
+  A.D.etiquetas[0].local = 'X'; A.guardar();
+  A.D.etiquetas[0].local = 'Y'; A.guardar();
+  A.D.etiquetas[0].qtd = '3 kg'; A.guardar();
+  assert.deepStrictEqual(N.nuvemLote(A.D), { mudancas: [{ tipo: 'etiqueta', id: 'e1', campos: { local: 'Y', qtd: '3 kg' } }], n: 3 });
+  // Linha estragada vinda do servidor não entra (e não derruba nada).
+  assert.strictEqual(N.nuvemReceber(A.D, A.retrato, [{ tipo: 'etiqueta', id: 'e9', dados: { cod: 9 }, atualizado_em: '2026-11-16T16:00:00.000000Z' }, { tipo: 'invasor', id: 'x', dados: {} }, null]), false);
+  assert.strictEqual(A.D.etiquetas.length, 1);
+  assert.strictEqual(A.D.nuvem.cursor, '2026-11-16T16:00:00.000000Z');
+});
+
+teste('nuvem: ligar um aparelho que já tinha dados, guardar, reabrir e desligar', () => {
+  const srv = servidorFalso();
+  // Aparelho usado sozinho, com dados de verdade e um recebimento aberto.
+  const D = fabrica();
+  N.emitir(D, { produtoId: 'p1', modo: 'resfriado', copias: 2 }, AGORA);
+  N.abrirRecebimento(D, { fornecedor: 'Pescados Sul' }, AGORA);
+  N.nuvemLigar(D, { casa: 'casa-1', email: 'casa@exemplo.com', aparelho: 'A' });
+  const A = { D, retrato: N.retratoVazio() };                 // nuvem vazia: tudo o que há aqui sobe
+  assert.strictEqual(N.recebimentoAberto(D).aparelho, 'A', 'o que estava em aberto passa a ser deste aparelho');
+  assert.deepStrictEqual(N.nuvemAReservar(D).map((r) => [r.contador, r.minimo]), [['etiqueta', 3], ['produto', 4], ['recebimento', 2], ['contagem', 1]], 'as faixas começam depois do que já existe');
+  N.nuvemAReservar(D).forEach((r) => N.nuvemReservado(D, r.contador, srv.reservar(r.contador, r.quantos, r.minimo), r.quantos));
+  assert.strictEqual(N.nuvemAnotar(D, A.retrato), 7, 'ajustes, 3 produtos, 2 etiquetas e 1 recebimento');
+  while (D.nuvem.fila.length) { const lote = N.nuvemLote(D, 3); srv.enviar(lote.mudancas); N.nuvemEnviado(D, lote.n); }
+  assert.deepStrictEqual(N.emitir(D, { produtoId: 'p1', modo: 'resfriado' }, AGORA).etiquetas.map((e) => [e.cod, e.recebimentoId]), [[3, 'r1']]);
+  // Outro aparelho entra e recebe tudo.
+  const B = aparelho(srv, 'B');
+  B.sincronizar();
+  assert.deepStrictEqual([B.D.produtos.length, B.D.etiquetas.length, B.D.recebimentos.length, B.D.config.equipe], [3, 2, 1, ['José', 'Ana Lúcia']]);
+  assert.deepStrictEqual(B.D.nuvem.reservas.etiqueta, [[1003, 2002]]);
+  // Guardar e reabrir mantém a fila, as faixas e o ponto de onde continuar.
+  N.nuvemAnotar(D, A.retrato);
+  const de = N.carregar(JSON.stringify(D));
+  assert.deepStrictEqual(de, D);
+  assert.deepStrictEqual([de.nuvem.fila.length, de.aparelho], [1, 'A']);
+  assert.strictEqual(N.carregar(Object.assign({}, JSON.parse(JSON.stringify(D)), { nuvem: { fila: 'x' } })).nuvem, undefined, 'ligação sem dono é ignorada');
+  // A cópia de segurança leva os dados, não a ligação.
+  const copia = N.paraBackup(D);
+  assert.deepStrictEqual([copia.nuvem, copia.aparelho, copia.recebimentos[0].aparelho, copia.etiquetas.length], [undefined, '', '', 3]);
+  assert.ok(D.nuvem, 'o original não muda');
+  // Desligado, o aparelho segue sozinho a partir do maior número que já viu.
+  N.nuvemDesligar(B.D);
+  assert.strictEqual(B.D.nuvem, undefined);
+  assert.deepStrictEqual(N.emitir(B.D, { produtoId: 'p1', modo: 'resfriado' }, AGORA).etiquetas.map((e) => e.cod), [3]);
+  assert.strictEqual(N.nuvemAnotar(B.D, N.retratoVazio()), 0);
 });
 
 console.log(`\n${n} testes passaram.`);

@@ -14,8 +14,16 @@
  *                   A matéria-prima etiquetada com um recebimento aberto fica ligada a ele (recebimentoId).
  *   D.contagens     cada contagem de estoque: { id, n, abertaEm, fechadaEm, responsavel, local, tipo,
  *                   lidas (números conferidos), esperadas, conferidas, faltando, baixou }.
- * Só pode haver um recebimento ou uma contagem em aberto por vez (fechadoEm / fechadaEm igual a 0).
+ * Só pode haver um recebimento ou uma contagem em aberto por vez em cada aparelho (fechadoEm / fechadaEm igual a 0).
  * Datas e horas são guardadas em milissegundos (hora do aparelho).
+ *
+ * Nuvem (opcional): com D.nuvem presente, o aparelho divide os dados com os outros da casa.
+ *   D.aparelho        código curto deste aparelho: marca quem abriu um recebimento ou uma contagem
+ *   D.nuvem.fila      mudanças ainda não enviadas, cada uma só com os campos que mudaram
+ *   D.nuvem.cursor    até onde este aparelho já recebeu as novidades dos outros
+ *   D.nuvem.reservas  faixas de números reservadas para este aparelho (etiquetas, produtos, recebimentos,
+ *                     contagens), para dois aparelhos nunca darem o mesmo número, mesmo sem internet
+ * Ver a seção "nuvem" mais abaixo.
  *
  * Leitor de código de barras: tudo o que o app imprime para ser lido começa com RESERVA ("ZZ"),
  * só com letras maiúsculas e números, que saem iguais em qualquer teclado:
@@ -162,6 +170,7 @@
     return {
       versao: VERSAO,
       exemplo: false,
+      aparelho: '',
       seq: 0,
       seqProd: 0,
       config: {
@@ -237,6 +246,73 @@
     };
   }
 
+  // ---------- conferência de cada registro ----------
+  // Usadas ao abrir o que estava guardado e ao receber da nuvem. Devolvem o registro limpo, com os
+  // campos sempre na mesma ordem, ou null se não der para aproveitar.
+  function limparProduto(p) {
+    if (!p || !p.id || !texto(p.nome)) return null;
+    const validades = {};
+    MODOS.forEach((m) => { const v = limparValidade(p.validades && p.validades[m.id]); if (v) validades[m.id] = v; });
+    const codigo = limparCodigo(p.codigo);
+    return { id: String(p.id), codigo: codigo.indexOf(RESERVA) === 0 ? '' : codigo, tipo: limparTipo(p.tipo), nome: texto(p.nome), grupo: texto(p.grupo, 30) || 'Outros', validades };
+  }
+
+  function limparEtiqueta(e) {
+    if (!e || !(e.cod > 0) || !(e.feitoEm > 0) || !(e.venceEm > 0) || !MODO[e.modo]) return null;
+    const status = e.status === 'usada' || e.status === 'descartada' ? e.status : 'ativa';
+    const et = {
+      id: 'e' + e.cod, cod: +e.cod, produtoId: e.produtoId || '', codigo: limparCodigo(e.codigo), tipo: limparTipo(e.tipo),
+      nome: texto(e.nome) || 'Sem nome', grupo: texto(e.grupo, 30),
+      modo: e.modo, local: texto(e.local, 40), responsavel: texto(e.responsavel, 40), qtd: texto(e.qtd, 20),
+      feitoEm: +e.feitoEm, venceEm: +e.venceEm, porHora: !!e.porHora, limitada: !!e.limitada,
+      loteOrigem: texto(e.loteOrigem, 20), validadeOrigem: deIso(e.validadeOrigem) != null ? e.validadeOrigem : '',
+      origens: limparOrigens(e.origens),
+      recebimentoId: /^r\d+$/.test(e.recebimentoId) ? e.recebimentoId : '',
+      tempChegada: lerTemperatura(e.tempChegada).valor,
+      status,
+    };
+    if (status !== 'ativa') {
+      et.baixaEm = e.baixaEm > 0 ? +e.baixaEm : et.venceEm;
+      et.baixaPor = texto(e.baixaPor, 40);
+      et.motivo = status === 'descartada' ? (texto(e.motivo, 40) || 'Outro') : '';
+    }
+    return et;
+  }
+
+  function limparRecebimento(r) {
+    if (!r || !(r.n > 0) || !(r.abertoEm > 0) || !texto(r.fornecedor)) return null;
+    return {
+      id: 'r' + r.n, n: +r.n, aparelho: texto(r.aparelho, 12), abertoEm: +r.abertoEm, fechadoEm: r.fechadoEm > 0 ? +r.fechadoEm : 0,
+      fornecedor: texto(r.fornecedor, 40), nota: texto(r.nota, 20), responsavel: texto(r.responsavel, 40), obs: texto(r.obs, 200),
+    };
+  }
+
+  function limparContagem(c) {
+    if (!c || !(c.n > 0) || !(c.abertaEm > 0)) return null;
+    return {
+      id: 'c' + c.n, n: +c.n, aparelho: texto(c.aparelho, 12), abertaEm: +c.abertaEm, fechadaEm: c.fechadaEm > 0 ? +c.fechadaEm : 0,
+      responsavel: texto(c.responsavel, 40), local: texto(c.local, 40), tipo: TIPO[c.tipo] ? c.tipo : '',
+      lidas: limparNumeros(c.lidas), esperadas: Math.max(0, Math.round(+c.esperadas) || 0), conferidas: Math.max(0, Math.round(+c.conferidas) || 0),
+      faltando: limparNumeros(c.faltando), baixou: !!c.baixou,
+    };
+  }
+
+  // Faixas de números reservadas: lista de [de, até], só as que ainda têm número.
+  const limparFaixas = (v) => (Array.isArray(v) ? v : [])
+    .map((f) => (Array.isArray(f) ? [Math.round(+f[0]), Math.round(+f[1])] : [0, -1]))
+    .filter((f) => f[0] > 0 && f[1] >= f[0]);
+
+  function limparNuvem(n) {
+    if (!n || typeof n !== 'object' || !texto(n.casa, 60)) return null;
+    const r = n.reservas || {};
+    return {
+      casa: texto(n.casa, 60), email: texto(n.email, 80), cursor: texto(n.cursor, 40),
+      fila: (Array.isArray(n.fila) ? n.fila : []).filter((m) => m && REGISTROS[m.tipo] && m.id != null && m.campos && typeof m.campos === 'object')
+        .map((m) => (m.apagado == null ? { tipo: m.tipo, id: String(m.id), campos: m.campos } : { tipo: m.tipo, id: String(m.id), campos: m.campos, apagado: !!m.apagado })),
+      reservas: { etiqueta: limparFaixas(r.etiqueta), produto: limparFaixas(r.produto), recebimento: limparFaixas(r.recebimento), contagem: limparFaixas(r.contagem) },
+    };
+  }
+
   // Lê o que estava guardado (ou um backup). Devolve null se não der para aproveitar.
   function carregar(json) {
     let o;
@@ -244,60 +320,75 @@
     if (!o || typeof o !== 'object' || !Array.isArray(o.produtos) || !Array.isArray(o.etiquetas)) return null;
     const D = vazio();
     D.exemplo = !!o.exemplo;
+    D.aparelho = texto(o.aparelho, 12);
     D.config = limparConfig(o.config);
-    (Array.isArray(o.recebimentos) ? o.recebimentos : []).forEach((r) => {
-      if (!r || !(r.n > 0) || !(r.abertoEm > 0) || !texto(r.fornecedor)) return;
-      D.recebimentos.push({
-        id: 'r' + r.n, n: +r.n, abertoEm: +r.abertoEm, fechadoEm: r.fechadoEm > 0 ? +r.fechadoEm : 0,
-        fornecedor: texto(r.fornecedor, 40), nota: texto(r.nota, 20), responsavel: texto(r.responsavel, 40), obs: texto(r.obs, 200),
-      });
-    });
-    (Array.isArray(o.contagens) ? o.contagens : []).forEach((c) => {
-      if (!c || !(c.n > 0) || !(c.abertaEm > 0)) return;
-      D.contagens.push({
-        id: 'c' + c.n, n: +c.n, abertaEm: +c.abertaEm, fechadaEm: c.fechadaEm > 0 ? +c.fechadaEm : 0,
-        responsavel: texto(c.responsavel, 40), local: texto(c.local, 40), tipo: TIPO[c.tipo] ? c.tipo : '',
-        lidas: limparNumeros(c.lidas), esperadas: Math.max(0, Math.round(+c.esperadas) || 0), conferidas: Math.max(0, Math.round(+c.conferidas) || 0),
-        faltando: limparNumeros(c.faltando), baixou: !!c.baixou,
-      });
-    });
-    // Um só em aberto por vez: se o arquivo trouxer mais de um, vale o último.
-    D.recebimentos.forEach((r, i) => { if (!r.fechadoEm && i < D.recebimentos.length - 1) r.fechadoEm = r.abertoEm; });
-    D.contagens.forEach((c, i) => { if (!c.fechadaEm && (i < D.contagens.length - 1 || D.recebimentos.some((r) => !r.fechadoEm))) c.fechadaEm = c.abertaEm; });
-    o.produtos.forEach((p) => {
-      if (!p || !p.id || !texto(p.nome)) return;
-      const validades = {};
-      MODOS.forEach((m) => { const v = limparValidade(p.validades && p.validades[m.id]); if (v) validades[m.id] = v; });
-      const codigo = limparCodigo(p.codigo);
-      const livre = codigo && codigo.indexOf(RESERVA) !== 0 && !D.produtos.some((x) => x.codigo === codigo);
-      D.produtos.push({ id: String(p.id), codigo: livre ? codigo : '', tipo: limparTipo(p.tipo), nome: texto(p.nome), grupo: texto(p.grupo, 30) || 'Outros', validades });
-    });
-    o.etiquetas.forEach((e) => {
-      if (!e || !(e.cod > 0) || !(e.feitoEm > 0) || !(e.venceEm > 0) || !MODO[e.modo]) return;
-      const status = e.status === 'usada' || e.status === 'descartada' ? e.status : 'ativa';
-      const et = {
-        id: 'e' + e.cod, cod: +e.cod, produtoId: e.produtoId || '', codigo: limparCodigo(e.codigo), tipo: limparTipo(e.tipo),
-        nome: texto(e.nome) || 'Sem nome', grupo: texto(e.grupo, 30),
-        modo: e.modo, local: texto(e.local, 40), responsavel: texto(e.responsavel, 40), qtd: texto(e.qtd, 20),
-        feitoEm: +e.feitoEm, venceEm: +e.venceEm, porHora: !!e.porHora, limitada: !!e.limitada,
-        loteOrigem: texto(e.loteOrigem, 20), validadeOrigem: deIso(e.validadeOrigem) != null ? e.validadeOrigem : '',
-        origens: limparOrigens(e.origens),
-        recebimentoId: D.recebimentos.some((r) => r.id === e.recebimentoId) ? e.recebimentoId : '',
-        tempChegada: lerTemperatura(e.tempChegada).valor,
-        status,
-      };
-      if (status !== 'ativa') {
-        et.baixaEm = e.baixaEm > 0 ? +e.baixaEm : et.venceEm;
-        et.baixaPor = texto(e.baixaPor, 40);
-        et.motivo = status === 'descartada' ? (texto(e.motivo, 40) || 'Outro') : '';
-      }
-      D.etiquetas.push(et);
-    });
-    D.seq = Math.max(+o.seq || 0, D.etiquetas.reduce((m, e) => Math.max(m, e.cod), 0));
-    D.seqProd = Math.max(+o.seqProd || 0, D.produtos.reduce((m, p) => Math.max(m, +String(p.id).replace(/\D/g, '') || 0), 0));
-    D.seqRec = Math.max(+o.seqRec || 0, D.recebimentos.reduce((m, r) => Math.max(m, r.n), 0));
-    D.seqCont = Math.max(+o.seqCont || 0, D.contagens.reduce((m, c) => Math.max(m, c.n), 0));
+    const juntar = (lista, origem, limpar) => (Array.isArray(origem) ? origem : []).forEach((x) => { const limpo = limpar(x); if (limpo) lista.push(limpo); });
+    juntar(D.recebimentos, o.recebimentos, limparRecebimento);
+    juntar(D.contagens, o.contagens, limparContagem);
+    // Um só em aberto por aparelho: se o arquivo trouxer mais de um, vale o último.
+    const recAberto = {}, contAberta = {};
+    D.recebimentos.forEach((r) => { if (!r.fechadoEm) recAberto[r.aparelho] = r; });
+    D.recebimentos.forEach((r) => { if (!r.fechadoEm && recAberto[r.aparelho] !== r) r.fechadoEm = r.abertoEm; });
+    D.contagens.forEach((c) => { if (!c.fechadaEm) contAberta[c.aparelho] = c; });
+    D.contagens.forEach((c) => { if (!c.fechadaEm && (contAberta[c.aparelho] !== c || recAberto[c.aparelho])) c.fechadaEm = c.abertaEm; });
+    juntar(D.produtos, o.produtos, limparProduto);
+    // Código repetido no arquivo: fica com o primeiro.
+    D.produtos.forEach((p, i) => { if (p.codigo && D.produtos.findIndex((x) => x.codigo === p.codigo) < i) p.codigo = ''; });
+    juntar(D.etiquetas, o.etiquetas, limparEtiqueta);
+    D.seq = Math.max(+o.seq || 0, 0);
+    D.seqProd = Math.max(+o.seqProd || 0, 0);
+    D.seqRec = Math.max(+o.seqRec || 0, 0);
+    D.seqCont = Math.max(+o.seqCont || 0, 0);
+    acertarContadores(D);
+    const nuvem = limparNuvem(o.nuvem);
+    if (nuvem) D.nuvem = nuvem;
     return D;
+  }
+
+  // Os contadores nunca ficam abaixo do maior número já usado.
+  function acertarContadores(D) {
+    D.seq = D.etiquetas.reduce((m, e) => Math.max(m, e.cod), D.seq);
+    D.seqProd = D.produtos.reduce((m, p) => Math.max(m, +String(p.id).replace(/\D/g, '') || 0), D.seqProd);
+    D.seqRec = D.recebimentos.reduce((m, r) => Math.max(m, r.n), D.seqRec);
+    D.seqCont = D.contagens.reduce((m, c) => Math.max(m, c.n), D.seqCont);
+  }
+
+  // ---------- numeração ----------
+  /*
+   * Sem nuvem, cada número novo é o seguinte ao último (D.seq, D.seqProd…). Com nuvem, o aparelho só usa
+   * números das faixas que reservou no servidor: assim dois aparelhos nunca imprimem a mesma etiqueta,
+   * mesmo trabalhando sem internet. proximo() devolve 0 quando as faixas acabaram.
+   */
+  const CONTADORES = { etiqueta: 'seq', produto: 'seqProd', recebimento: 'seqRec', contagem: 'seqCont' };
+  const BLOCO = { etiqueta: 1000, produto: 100, recebimento: 50, contagem: 50 };   // quantos reservar de cada vez
+  const SEM_NUMEROS = 'Os números reservados para este aparelho acabaram. Conecte à internet por um instante para reservar mais.';
+
+  function disponiveis(D, contador) {
+    if (!D.nuvem) return Infinity;
+    return D.nuvem.reservas[contador].reduce((t, f) => t + (f[1] - f[0] + 1), 0);
+  }
+  // Os próximos n números, sem gastar (para a prévia). Lista vazia se não houver n disponíveis.
+  function espiar(D, contador, n) {
+    n = n || 1;
+    const lista = [];
+    if (!D.nuvem) { for (let i = 1; i <= n; i++) lista.push(D[CONTADORES[contador]] + i); return lista; }
+    D.nuvem.reservas[contador].some((f) => { for (let x = f[0]; x <= f[1] && lista.length < n; x++) lista.push(x); return lista.length >= n; });
+    return lista.length === n ? lista : [];
+  }
+  function proximo(D, contador) {
+    const chave = CONTADORES[contador];
+    if (!D.nuvem) return ++D[chave];
+    const faixas = D.nuvem.reservas[contador];
+    if (!faixas.length) return 0;
+    const n = faixas[0][0]++;
+    if (faixas[0][0] > faixas[0][1]) faixas.shift();
+    D[chave] = Math.max(D[chave], n);
+    return n;
+  }
+  // Um número que acabou não sendo usado (recebimento ou contagem desfeitos): sem nuvem, volta a ficar livre.
+  function devolver(D, contador, n) {
+    const chave = CONTADORES[contador];
+    if (!D.nuvem && n === D[chave]) D[chave]--;
   }
 
   // ---------- catálogo ----------
@@ -319,7 +410,12 @@
     const grupo = texto(dados.grupo, 30) || 'Outros';
     let p = dados.id && D.produtos.find((x) => x.id === dados.id);
     if (p) { p.codigo = codigo; p.tipo = tipo; p.nome = nome; p.grupo = grupo; p.validades = validades; }
-    else { p = { id: 'p' + (++D.seqProd), codigo, tipo, nome, grupo, validades }; D.produtos.push(p); }
+    else {
+      const n = proximo(D, 'produto');
+      if (!n) return { erro: SEM_NUMEROS };
+      p = { id: 'p' + n, codigo, tipo, nome, grupo, validades };
+      D.produtos.push(p);
+    }
     return { produto: p };
   }
 
@@ -350,6 +446,7 @@
     if (feitoEm > agora + 60e3) return { erro: 'A data do preparo não pode ficar no futuro.' };
     const copias = Math.round(+o.copias || 1);
     if (!(copias >= 1 && copias <= MAX_COPIAS)) return { erro: 'O número de etiquetas vai de 1 a ' + MAX_COPIAS + '.' };
+    if (disponiveis(D, 'etiqueta') < copias) return { erro: SEM_NUMEROS };
     const validadeOrigem = deIso(o.validadeOrigem) != null ? o.validadeOrigem : '';
     if (validadeOrigem && fimDoDia(deIso(validadeOrigem)) < feitoEm) {
       return { erro: 'A validade do fabricante já passou. Este produto não deve ser etiquetado.' };
@@ -378,7 +475,7 @@
     if (m.erro) return m;
     const novas = [];
     for (let i = 0; i < m.copias; i++) {
-      const cod = ++D.seq;
+      const cod = proximo(D, 'etiqueta');
       novas.push(Object.assign({ id: 'e' + cod, cod }, m.base, { origens: m.base.origens.slice() }));
     }
     Array.prototype.push.apply(D.etiquetas, novas);
@@ -466,8 +563,10 @@
   }
 
   // ---------- recebimento de mercadoria ----------
-  const recebimentoAberto = (D) => D.recebimentos.find((r) => !r.fechadoEm) || null;
-  const contagemAberta = (D) => D.contagens.find((c) => !c.fechadaEm) || null;
+  // Com nuvem, cada aparelho só enxerga como "em aberto" o que ele mesmo abriu.
+  const meu = (D, x) => !D.nuvem || x.aparelho === D.aparelho;
+  const recebimentoAberto = (D) => D.recebimentos.find((r) => !r.fechadoEm && meu(D, r)) || null;
+  const contagemAberta = (D) => D.contagens.find((c) => !c.fechadaEm && meu(D, c)) || null;
   const etiquetasDoRecebimento = (D, id) => D.etiquetas.filter((e) => e.recebimentoId === id);
 
   // Começa a entrega de um fornecedor: a matéria-prima etiquetada daqui até o encerramento fica ligada a ela.
@@ -477,8 +576,9 @@
     if (aberto) return { erro: 'O recebimento Nº ' + aberto.n + ' (' + aberto.fornecedor + ') ainda está aberto. Encerre-o primeiro.' };
     const fornecedor = texto(o.fornecedor, 40);
     if (!fornecedor) return { erro: 'Informe o fornecedor.' };
-    const n = ++D.seqRec;
-    const r = { id: 'r' + n, n, abertoEm: agora, fechadoEm: 0, fornecedor, nota: texto(o.nota, 20), responsavel: texto(o.responsavel, 40), obs: '' };
+    const n = proximo(D, 'recebimento');
+    if (!n) return { erro: SEM_NUMEROS };
+    const r = { id: 'r' + n, n, aparelho: D.aparelho, abertoEm: agora, fechadoEm: 0, fornecedor, nota: texto(o.nota, 20), responsavel: texto(o.responsavel, 40), obs: '' };
     D.recebimentos.push(r);
     return { recebimento: r };
   }
@@ -489,7 +589,7 @@
     if (!r) return { erro: 'Não há recebimento aberto.' };
     if (!etiquetasDoRecebimento(D, r.id).length) {
       D.recebimentos.splice(D.recebimentos.indexOf(r), 1);
-      if (r.n === D.seqRec) D.seqRec--;
+      devolver(D, 'recebimento', r.n);
       return { vazio: true, recebimento: r };
     }
     r.fechadoEm = agora;
@@ -524,9 +624,10 @@
     if (contagemAberta(D)) return { erro: 'Já existe uma contagem em andamento.' };
     const rec = recebimentoAberto(D);
     if (rec) return { erro: 'O recebimento Nº ' + rec.n + ' (' + rec.fornecedor + ') está aberto. Encerre-o antes de contar o estoque.' };
-    const n = ++D.seqCont;
+    const n = proximo(D, 'contagem');
+    if (!n) return { erro: SEM_NUMEROS };
     const c = {
-      id: 'c' + n, n, abertaEm: agora, fechadaEm: 0, responsavel: texto(o && o.responsavel, 40),
+      id: 'c' + n, n, aparelho: D.aparelho, abertaEm: agora, fechadaEm: 0, responsavel: texto(o && o.responsavel, 40),
       local: texto(o && o.local, 40), tipo: o && TIPO[o.tipo] ? o.tipo : '',
       lidas: [], esperadas: 0, conferidas: 0, faltando: [], baixou: false,
     };
@@ -583,7 +684,7 @@
     const c = contagemAberta(D);
     if (!c) return false;
     D.contagens.splice(D.contagens.indexOf(c), 1);
-    if (c.n === D.seqCont) D.seqCont--;
+    devolver(D, 'contagem', c.n);
     return true;
   }
 
@@ -605,6 +706,169 @@
         sit: situacao(g.primeira.venceEm, agora, D.config.alertaDias), resta: textoRestante(g.primeira.venceEm, agora, g.primeira.porHora),
       };
     }).sort((a, b) => ordem(a.tipo) - ordem(b.tipo) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  }
+
+  // ---------- nuvem ----------
+  /*
+   * A nuvem guarda uma linha por registro (produto, etiqueta, recebimento, contagem e os ajustes da casa).
+   * Cada aparelho trabalha nos seus dados e, a cada mudança, anota só os campos que mudaram (a fila).
+   * O servidor junta os campos recebidos ao que já tem: se um aparelho mudou o local de uma etiqueta
+   * enquanto outro dava baixa nela, as duas mudanças ficam. No mesmo campo, vale quem chegou por último.
+   *
+   * O "retrato" é o que este aparelho acredita que a nuvem tem (ou terá, quando a fila for enviada): é
+   * comparando os dados com ele que se descobre o que mudou, sem precisar marcar cada alteração à mão.
+   */
+  const REGISTROS = { produto: 'produtos', etiqueta: 'etiquetas', recebimento: 'recebimentos', contagem: 'contagens', config: '' };
+  const LISTAS = ['produto', 'etiqueta', 'recebimento', 'contagem'];
+  const LIMPAR = { produto: limparProduto, etiqueta: limparEtiqueta, recebimento: limparRecebimento, contagem: limparContagem };
+  // Estes ajustes são da casa; tamanho da etiqueta, letras e som são de cada aparelho e não vão para a nuvem.
+  const CONFIG_COMUM = ['casa', 'alertaDias', 'contarDiaPreparo', 'locais', 'equipe'];
+  const configComum = (D) => { const c = {}; CONFIG_COMUM.forEach((k) => { c[k] = D.config[k]; }); return c; };
+
+  // Liga este aparelho à nuvem da casa. O que estiver em aberto passa a ser deste aparelho.
+  function nuvemLigar(D, o) {
+    D.aparelho = texto(o.aparelho, 12);
+    D.nuvem = { casa: texto(o.casa, 60), email: texto(o.email, 80), cursor: '', fila: [], reservas: { etiqueta: [], produto: [], recebimento: [], contagem: [] } };
+    D.recebimentos.forEach((r) => { if (!r.fechadoEm) r.aparelho = D.aparelho; });
+    D.contagens.forEach((c) => { if (!c.fechadaEm) c.aparelho = D.aparelho; });
+    return D;
+  }
+  // Desliga: os dados continuam no aparelho e a numeração volta a ser a dele.
+  function nuvemDesligar(D) {
+    delete D.nuvem;
+    acertarContadores(D);
+  }
+
+  const retratoVazio = () => ({ config: {}, produto: {}, etiqueta: {}, recebimento: {}, contagem: {} });
+  function nuvemRetrato(D) {
+    const r = retratoVazio();
+    r.config.config = JSON.stringify(configComum(D));
+    LISTAS.forEach((tipo) => { D[REGISTROS[tipo]].forEach((x) => { r[tipo][x.id] = JSON.stringify(x); }); });
+    return r;
+  }
+
+  // Compara os dados com o retrato, põe na fila o que mudou e atualiza o retrato. Devolve quantas mudanças anotou.
+  function nuvemAnotar(D, retrato) {
+    if (!D.nuvem) return 0;
+    const fila = D.nuvem.fila;
+    let n = 0;
+    const comparar = (tipo, id, atual) => {
+      const novo = JSON.stringify(atual);
+      const velho = retrato[tipo][id];
+      if (velho === novo) return;
+      let campos = atual;
+      if (velho != null) {
+        const antes = JSON.parse(velho);
+        campos = {};
+        Object.keys(atual).forEach((k) => { if (JSON.stringify(atual[k]) !== JSON.stringify(antes[k])) campos[k] = atual[k]; });
+        Object.keys(antes).forEach((k) => { if (!(k in atual)) campos[k] = null; });   // campo que deixou de existir
+      }
+      fila.push({ tipo, id, campos: JSON.parse(JSON.stringify(campos)) });
+      retrato[tipo][id] = novo;
+      n++;
+    };
+    comparar('config', 'config', configComum(D));
+    LISTAS.forEach((tipo) => {
+      const vistos = {};
+      D[REGISTROS[tipo]].forEach((x) => { vistos[x.id] = true; comparar(tipo, x.id, x); });
+      Object.keys(retrato[tipo]).forEach((id) => {
+        if (vistos[id]) return;
+        fila.push({ tipo, id, campos: {}, apagado: true });
+        delete retrato[tipo][id];
+        n++;
+      });
+    });
+    return n;
+  }
+
+  // O que mandar agora: as primeiras mudanças da fila, juntando as que são do mesmo registro.
+  // n = quantas da fila isso cobre (para tirar de lá quando o servidor confirmar).
+  function nuvemLote(D, max) {
+    const parte = D.nuvem.fila.slice(0, max || 500);
+    const porRegistro = {};
+    const mudancas = [];
+    parte.forEach((m) => {
+      const k = m.tipo + '|' + m.id;
+      let j = porRegistro[k];
+      if (!j) { j = porRegistro[k] = { tipo: m.tipo, id: m.id, campos: {} }; mudancas.push(j); }
+      Object.assign(j.campos, m.campos);
+      if (m.apagado != null) j.apagado = m.apagado;
+    });
+    return { mudancas, n: parte.length };
+  }
+  function nuvemEnviado(D, n) { D.nuvem.fila.splice(0, n); }
+
+  /*
+   * Aplica as linhas que vieram do servidor ({ tipo, id, dados, apagado, atualizado_em }). Uma mudança
+   * minha que ainda está na fila continua valendo por cima do que chegou, até ser enviada.
+   * Devolve true se algum dado deste aparelho mudou.
+   */
+  function nuvemReceber(D, retrato, linhas) {
+    let mudou = false;
+    (linhas || []).forEach((l) => {
+      if (!l || !(l.tipo in REGISTROS) || l.id == null) return;
+      const id = String(l.id);
+      if (l.atualizado_em && String(l.atualizado_em) > D.nuvem.cursor) D.nuvem.cursor = String(l.atualizado_em);
+      const dados = Object.assign({}, l.dados);
+      let apagado = !!l.apagado;
+      D.nuvem.fila.forEach((m) => {
+        if (m.tipo !== l.tipo || m.id !== id) return;
+        Object.assign(dados, m.campos);
+        if (m.apagado != null) apagado = m.apagado;
+      });
+      if (l.tipo === 'config') {
+        const antes = JSON.stringify(configComum(D));
+        const comum = {};
+        CONFIG_COMUM.forEach((k) => { if (dados[k] != null) comum[k] = dados[k]; });
+        D.config = limparConfig(Object.assign({}, D.config, comum));
+        retrato.config.config = JSON.stringify(configComum(D));
+        if (retrato.config.config !== antes) mudou = true;
+        return;
+      }
+      const lista = D[REGISTROS[l.tipo]];
+      const i = lista.findIndex((x) => x.id === id);
+      const limpo = apagado ? null : LIMPAR[l.tipo](dados);
+      if (!limpo || limpo.id !== id) {
+        if (i >= 0) { lista.splice(i, 1); mudou = true; }
+        delete retrato[l.tipo][id];
+        return;
+      }
+      const json = JSON.stringify(limpo);
+      if (i < 0) { lista.push(limpo); mudou = true; }
+      else if (JSON.stringify(lista[i]) !== json) { lista[i] = limpo; mudou = true; }
+      retrato[l.tipo][id] = json;
+    });
+    if (mudou) {
+      D.etiquetas.sort((a, b) => a.cod - b.cod);
+      D.recebimentos.sort((a, b) => a.abertoEm - b.abertoEm || a.n - b.n);
+      D.contagens.sort((a, b) => a.abertaEm - b.abertaEm || a.n - b.n);
+      acertarContadores(D);
+    }
+    return mudou;
+  }
+
+  // Faixas a reservar agora: de cada contador que está com menos da metade de um bloco.
+  // minimo garante que o servidor nunca devolva um número que este aparelho já usou.
+  function nuvemAReservar(D) {
+    if (!D.nuvem) return [];
+    return Object.keys(BLOCO).filter((c) => disponiveis(D, c) < BLOCO[c] / 2)
+      .map((c) => ({ contador: c, quantos: BLOCO[c], minimo: D[CONTADORES[c]] + 1 }));
+  }
+  function nuvemReservado(D, contador, primeiro, quantos) {
+    primeiro = Math.round(+primeiro);
+    if (!(primeiro > 0) || !(quantos > 0) || !D.nuvem.reservas[contador]) return false;
+    D.nuvem.reservas[contador].push([primeiro, primeiro + quantos - 1]);
+    return true;
+  }
+
+  // A cópia de segurança leva os dados, mas não a ligação com a nuvem (que é de cada aparelho).
+  function paraBackup(D) {
+    const copia = JSON.parse(JSON.stringify(D));
+    delete copia.nuvem;
+    copia.aparelho = '';
+    copia.recebimentos.forEach((r) => { r.aparelho = ''; });
+    copia.contagens.forEach((c) => { c.aparelho = ''; });
+    return copia;
   }
 
   // ---------- dados de exemplo ----------
@@ -748,13 +1012,13 @@
       .forEach((l) => {
         const e = l[0];
         const n = ++D.seqRec;
-        D.recebimentos.push({ id: 'r' + n, n, abertoEm: e.feitoEm - 10 * 60e3, fechadoEm: Math.min(e.feitoEm + 15 * 60e3, agora), fornecedor: l[1], nota: l[2], responsavel: e.responsavel, obs: l[3] });
+        D.recebimentos.push({ id: 'r' + n, n, aparelho: '', abertoEm: e.feitoEm - 10 * 60e3, fechadoEm: Math.min(e.feitoEm + 15 * 60e3, agora), fornecedor: l[1], nota: l[2], responsavel: e.responsavel, obs: l[3] });
         e.recebimentoId = 'r' + n;
       });
     // E uma contagem do freezer, há três dias, com tudo no lugar.
     const noFreezer = D.etiquetas.filter((e) => e.local === L[3] && e.feitoEm < ha(3, 17, 0)).map((e) => e.cod);
     D.contagens.push({
-      id: 'c1', n: ++D.seqCont, abertaEm: ha(3, 17, 0), fechadaEm: ha(3, 17, 0) + 8 * 60e3, responsavel: 'Diego', local: L[3], tipo: '',
+      id: 'c1', n: ++D.seqCont, aparelho: '', abertaEm: ha(3, 17, 0), fechadaEm: ha(3, 17, 0) + 8 * 60e3, responsavel: 'Diego', local: L[3], tipo: '',
       lidas: noFreezer, esperadas: noFreezer.length, conferidas: noFreezer.length, faltando: [], baixou: false,
     });
     return D;
@@ -974,6 +1238,8 @@
     MOTIVO_CONTAGEM, TEMPERATURA, lerTemperatura, fmtTemperatura,
     recebimentoAberto, etiquetasDoRecebimento, abrirRecebimento, fecharRecebimento, resumoRecebimento, fornecedores,
     contagemAberta, abrirContagem, andamentoContagem, escopoTexto, contarEtiqueta, fecharContagem, cancelarContagem, saldo,
+    BLOCO, SEM_NUMEROS, disponiveis, espiar, proximo,
+    nuvemLigar, nuvemDesligar, nuvemRetrato, retratoVazio, nuvemAnotar, nuvemLote, nuvemEnviado, nuvemReceber, nuvemAReservar, nuvemReservado, paraBackup,
     inicioDoDia, fimDoDia, somarDias, diasEntre, dataIso, deIso,
     fmtData, fmtDataAno, fmtHora, diaSemana, fmtCodigo, fmtValidade,
     calcularValidade, situacao, textoRestante,
